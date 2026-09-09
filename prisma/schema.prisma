@@ -1,0 +1,264 @@
+// AYK PTE LTD - Solar Project Management System
+// Prisma schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  password  String
+  role      String   @default("Worker") // Admin, ProjectManager, SiteSupervisor, SafetyOfficer, Engineer, StoreOfficer, Worker
+  avatar    String?
+  phone     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  managedProjects Project[] @relation("ProjectManager")
+  tasks           Task[]
+  dailyProgress   DailyProgress[] @relation("ProgressSubmitter")
+  safetyChecklists SafetyChecklist[]
+  safetyIncidents SafetyIncident[] @relation("IncidentReporter")
+  documents       Document[] @relation("DocUploader")
+}
+
+model Project {
+  id              String   @id @default(cuid())
+  code            String   @unique
+  name            String
+  location        String
+  client          String?
+  totalPanels     Int      @default(0)
+  installedPanels Int      @default(0)
+  capacity        String?  // e.g. "2.5 MWp"
+  status          String   @default("Active") // Active, Completed, Delayed, OnHold
+  startDate       DateTime
+  endDate         DateTime
+  budget          Float    @default(0)
+  actualCost      Float    @default(0)
+  managerId       String?
+  manager         User?    @relation("ProjectManager", fields: [managerId], references: [id])
+  description     String?
+
+  stages          ProjectStage[]
+  dailyProgress   DailyProgress[]
+  tasks           Task[]
+  expenses        Expense[]
+  documents       Document[]
+  notifications   Notification[]
+  workers         Worker[]
+  materialTransactions MaterialTransaction[]
+  safetyChecklists SafetyChecklist[]
+  safetyIncidents SafetyIncident[]
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model ProjectStage {
+  id          String   @id @default(cuid())
+  projectId    String
+  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name        String   // Survey, Design, Procurement, Installation, Testing, Handover
+  order       Int      @default(0)
+  plannedPct  Float    @default(0)
+  actualPct   Float    @default(0)
+  weight      Float    @default(16.66)
+  status      String   @default("NotStarted") // NotStarted, InProgress, Completed, Delayed
+  startDate   DateTime?
+  endDate     DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model DailyProgress {
+  id              String   @id @default(cuid())
+  projectId       String
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  date            DateTime
+  installedPanels Int      @default(0)
+  totalInstalled  Int      @default(0)
+  manHours        Float    @default(0)
+  workers         Int      @default(0)
+  materialsUsed   String?  // JSON string
+  equipmentUsed   String?  // JSON string
+  workCompleted   String?
+  workPending     String?
+  siteStatus      String   @default("Normal") // Normal, Delay, Issue, Halt
+  remarks         String?
+  photoUrls       String?  // JSON string
+  gpsLocation     String?
+  submittedById   String?
+  submittedBy     User?    @relation("ProgressSubmitter", fields: [submittedById], references: [id])
+  createdAt       DateTime @default(now())
+}
+
+model Task {
+  id              String   @id @default(cuid())
+  title           String
+  description     String?
+  projectId       String?
+  project         Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignedToId    String?
+  assignedTo      User?    @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
+  assignedToName  String?
+  team            String?
+  priority        String   @default("Medium") // Low, Medium, High, Critical
+  status          String   @default("Todo") // Todo, InProgress, Completed, Delayed
+  progress        Float    @default(0)
+  startDate       DateTime
+  dueDate         DateTime
+  completedAt     DateTime?
+  remarks         String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Worker {
+  id          String   @id @default(cuid())
+  name        String
+  employeeId  String   @unique
+  role        String   // e.g. Solar Installer, Electrician, Foreman
+  team        String?
+  projectId   String?
+  project     Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  phone       String?
+  status      String   @default("Active") // Active, OnLeave, Inactive
+  skillLevel  String   @default("Intermediate") // Junior, Intermediate, Senior
+  attendance  Attendance[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Attendance {
+  id          String   @id @default(cuid())
+  workerId    String
+  worker      Worker   @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  date        DateTime
+  checkIn      DateTime?
+  checkOut     DateTime?
+  workingHours Float    @default(0)
+  overtime    Float    @default(0)
+  status      String   @default("Present") // Present, Absent, Leave, HalfDay
+  createdAt   DateTime @default(now())
+}
+
+model Material {
+  id          String   @id @default(cuid())
+  name        String
+  category    String   // SolarPanels, DCCables, ACCables, MountingRails, Inverters, MC4Connectors, Bolts, Other
+  unit        String   @default("pcs") // pcs, meters, rolls, kg
+  stockQty    Float    @default(0)
+  minStockLevel Float  @default(0)
+  unitPrice   Float    @default(0)
+  supplier    String?
+  transactions MaterialTransaction[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model MaterialTransaction {
+  id          String   @id @default(cuid())
+  materialId  String
+  material    Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  projectId   String?
+  project     Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  type        String   // Add, Issue, Return, Transfer
+  qty         Float
+  fromProject String?
+  toProject   String?
+  remarks     String?
+  date        DateTime
+  createdAt   DateTime @default(now())
+}
+
+model Expense {
+  id          String   @id @default(cuid())
+  date        DateTime
+  projectId   String?
+  project     Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  category    String   // Tools, Transport, Accommodation, Fuel, Materials, Labour, Miscellaneous
+  description String
+  amount      Float
+  paidBy      String?
+  approvalStatus String @default("Pending") // Pending, Approved, Rejected
+  receiptUrl  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model SafetyChecklist {
+  id          String   @id @default(cuid())
+  date        DateTime
+  projectId   String?
+  project     Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  checklistType String @default("PPE") // PPE, Toolbox, Inspection
+  helmet      Boolean  @default(false)
+  safetyShoes Boolean  @default(false)
+  gloves      Boolean  @default(false)
+  harness     Boolean  @default(false)
+  workAreaClean Boolean @default(false)
+  equipmentCondition Boolean @default(false)
+  electricalSafety Boolean @default(false)
+  conductedById String?
+  conductedBy  User?   @relation(fields: [conductedById], references: [id], onDelete: SetNull)
+  conductedByName String?
+  location    String?
+  remarks     String?
+  compliancePct Float @default(0)
+  createdAt   DateTime @default(now())
+}
+
+model SafetyIncident {
+  id          String   @id @default(cuid())
+  date        DateTime
+  projectId   String?
+  project     Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  type        String   // Incident, NearMiss, UnsafeCondition
+  severity    String   @default("Low") // Low, Medium, High, Critical
+  description String
+  location    String?
+  reportedById String?
+  reportedBy   User?   @relation("IncidentReporter", fields: [reportedById], references: [id], onDelete: SetNull)
+  reportedByName String?
+  status      String   @default("Open") // Open, Investigating, Closed
+  actionTaken String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Document {
+  id          String   @id @default(cuid())
+  name        String
+  category    String   // Drawings, Permits, MethodStatements, RiskAssessments, Certificates, Inspection, Photos, Reports
+  projectId   String?
+  project     Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  fileUrl     String
+  fileType    String
+  fileSize    Int      @default(0)
+  uploadedById String?
+  uploadedBy   User?   @relation("DocUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+  uploadedByName String?
+  description String?
+  createdAt   DateTime @default(now())
+}
+
+model Notification {
+  id          String   @id @default(cuid())
+  type        String   // DelayedProject, LowStock, OverdueTask, SafetyIncident, PendingApproval, DailyProgress
+  title       String
+  message     String
+  projectId   String?
+  project     Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  isRead      Boolean  @default(false)
+  severity    String   @default("info") // info, warning, critical
+  createdAt   DateTime @default(now())
+}
