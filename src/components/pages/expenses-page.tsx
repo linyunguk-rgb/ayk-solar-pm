@@ -3,9 +3,10 @@
 import { useMemo, useState } from 'react'
 import { useAppStore } from '@/store/app-store'
 import { useFetch, apiPost, apiPut, apiDelete } from '@/hooks/use-fetch'
-import { PageHeader } from '@/components/shared/page-header'
+import { SectionHeader, SubSection } from '@/components/shared/section-header'
 import { StatCard } from '@/components/shared/stat-card'
 import { StatusBadge } from '@/components/shared/status-badge'
+import { EmptyState } from '@/components/shared/empty-state'
 import {
   Card, CardContent, CardHeader, CardTitle, CardDescription,
 } from '@/components/ui/card'
@@ -32,6 +33,7 @@ import { Progress } from '@/components/ui/progress'
 import {
   DollarSign, Plus, Check, X, Pencil, Trash2, Upload, TrendingUp,
   TrendingDown, Wallet, CheckCircle2, Clock, XCircle, FileText,
+  BarChart3, PieChart as PieChartIcon,
 } from 'lucide-react'
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -43,18 +45,20 @@ import {
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
-// Category badge colors (no indigo)
+// Category badge colors — each category gets a distinct color
+// Tools=slate, Transport=sky, Accommodation=violet, Fuel=amber,
+// Materials=pink, Labour=cyan, Miscellaneous=stone
 const EXPENSE_CATEGORY_BADGE: Record<string, string> = {
-  'Tools & Equipment': 'bg-amber-100 text-amber-700 border-amber-200 hover:bg-amber-100',
+  'Tools & Equipment': 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-100',
   'Transport': 'bg-sky-100 text-sky-700 border-sky-200 hover:bg-sky-100',
   'Accommodation': 'bg-violet-100 text-violet-700 border-violet-200 hover:bg-violet-100',
-  'Fuel': 'bg-orange-100 text-orange-700 border-orange-200 hover:bg-orange-100',
-  'Materials': 'bg-emerald-100 text-emerald-700 border-emerald-200 hover:bg-emerald-100',
-  'Labour': 'bg-teal-100 text-teal-700 border-teal-200 hover:bg-teal-100',
-  'Miscellaneous': 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-100',
+  'Fuel': 'bg-amber-100 text-amber-700 border-amber-200 hover:bg-amber-100',
+  'Materials': 'bg-pink-100 text-pink-700 border-pink-200 hover:bg-pink-100',
+  'Labour': 'bg-cyan-100 text-cyan-700 border-cyan-200 hover:bg-cyan-100',
+  'Miscellaneous': 'bg-stone-100 text-stone-700 border-stone-300 hover:bg-stone-100',
 }
 
-const PIE_COLORS = ['#10b981', '#0ea5e9', '#f59e0b', '#ef4444', '#a78bfa', '#14b8a6', '#64748b']
+const PIE_COLORS = ['#64748b', '#0ea5e9', '#8b5cf6', '#f59e0b', '#ec4899', '#06b6d4', '#78716c']
 
 function ExpenseCategoryBadge({ category }: { category: string }) {
   return (
@@ -65,6 +69,15 @@ function ExpenseCategoryBadge({ category }: { category: string }) {
       {category}
     </Badge>
   )
+}
+
+function ApprovalBadge({ status }: { status: string }) {
+  const cls =
+    status === 'Approved' ? 'bg-emerald-100 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+      : status === 'Pending' ? 'bg-amber-100 text-amber-700 border-amber-200 hover:bg-amber-100'
+        : status === 'Rejected' ? 'bg-red-100 text-red-700 border-red-200 hover:bg-red-100'
+          : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-100'
+  return <Badge variant="outline" className={cn('font-medium', cls)}>{status}</Badge>
 }
 
 function todayISO(): string {
@@ -131,17 +144,17 @@ export function ExpensesPage() {
 
   // Stats
   const stats = useMemo(() => {
-    const total = expenses.reduce((s, e) => s + Number(e.amount), 0)
+    const total = expenses.reduce((s, e) => s + Number(e.amount ?? 0), 0)
     const approved = expenses.filter((e) => e.approvalStatus === 'Approved')
     const pending = expenses.filter((e) => e.approvalStatus === 'Pending')
     const rejected = expenses.filter((e) => e.approvalStatus === 'Rejected')
     return {
       total,
-      approvedSum: approved.reduce((s, e) => s + Number(e.amount), 0),
+      approvedSum: approved.reduce((s, e) => s + Number(e.amount ?? 0), 0),
       approvedCount: approved.length,
-      pendingSum: pending.reduce((s, e) => s + Number(e.amount), 0),
+      pendingSum: pending.reduce((s, e) => s + Number(e.amount ?? 0), 0),
       pendingCount: pending.length,
-      rejectedSum: rejected.reduce((s, e) => s + Number(e.amount), 0),
+      rejectedSum: rejected.reduce((s, e) => s + Number(e.amount ?? 0), 0),
       rejectedCount: rejected.length,
     }
   }, [expenses])
@@ -152,7 +165,7 @@ export function ExpensesPage() {
     for (const e of expenses) {
       if (e.approvalStatus !== 'Approved') continue
       if (!e.projectId) continue
-      map[e.projectId] = (map[e.projectId] || 0) + Number(e.amount)
+      map[e.projectId] = (map[e.projectId] || 0) + Number(e.amount ?? 0)
     }
     return map
   }, [expenses])
@@ -160,7 +173,7 @@ export function ExpensesPage() {
   // Budget vs Actual chart data
   const budgetChart = useMemo(() => {
     return projects.map((p) => ({
-      name: p.name?.length > 14 ? p.name.slice(0, 14) + '…' : p.name,
+      name: p.name?.length > 14 ? p.name.slice(0, 14) + '…' : (p.name || 'Untitled'),
       budget: Number(p.budget) || 0,
       actual: (Number(p.actualCost) || 0) + (approvedByProject[p.id] || 0),
     }))
@@ -171,7 +184,7 @@ export function ExpensesPage() {
     const map: Record<string, number> = {}
     for (const e of expenses) {
       if (e.approvalStatus === 'Rejected') continue
-      map[e.category] = (map[e.category] || 0) + Number(e.amount)
+      map[e.category] = (map[e.category] || 0) + Number(e.amount ?? 0)
     }
     return EXPENSE_CATEGORIES.filter((c) => (map[c] || 0) > 0).map((c) => ({
       name: c,
@@ -294,23 +307,31 @@ export function ExpensesPage() {
     }
   }
 
-  // ---------- Render ----------
+  // ---------- Render: Loading ----------
   if (loadingExpenses && !expensesData) {
     return (
       <div className="space-y-6">
-        <PageHeader
+        <SectionHeader
+          section="expenses"
           title="Expense Management"
           description="Track project expenses and approvals"
-          icon={<DollarSign className="h-5 w-5" />}
+          icon={<DollarSign className="h-6 w-6" />}
         />
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Card key={i}><CardContent className="p-4 h-28"><Skeleton className="h-full w-full" /></CardContent></Card>
-          ))}
+        <div>
+          <SubSection section="expenses" title="Spending Summary" icon={<BarChart3 className="h-4 w-4" />} />
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Card key={i} className="overflow-hidden border-border/60">
+                <CardContent className="p-4 h-28">
+                  <Skeleton className="h-full w-full" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <Card><CardContent className="p-4"><Skeleton className="h-72 w-full" /></CardContent></Card>
-          <Card><CardContent className="p-4"><Skeleton className="h-72 w-full" /></CardContent></Card>
+          <Card className="overflow-hidden border-border/60"><CardContent className="p-4"><Skeleton className="h-72 w-full" /></CardContent></Card>
+          <Card className="overflow-hidden border-border/60"><CardContent className="p-4"><Skeleton className="h-72 w-full" /></CardContent></Card>
         </div>
       </div>
     )
@@ -318,66 +339,83 @@ export function ExpensesPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
+      <SectionHeader
+        section="expenses"
         title="Expense Management"
         description="Track project expenses and approvals"
-        icon={<DollarSign className="h-5 w-5" />}
+        icon={<DollarSign className="h-6 w-6" />}
         actions={
-          <Button onClick={openAddExpense} className="bg-emerald-600 hover:bg-emerald-700 text-white">
-            <Plus className="h-4 w-4" /> Add Expense
+          <Button onClick={openAddExpense} className="bg-pink-600 hover:bg-pink-700 text-white">
+            <Plus className="h-4 w-4" /> <span className="hidden sm:inline">Add Expense</span><span className="sm:hidden">Add</span>
           </Button>
         }
       />
 
-      {/* Stat cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-        <StatCard
-          title="Total Expenses"
-          value={formatCurrency(stats.total)}
-          subtitle={`${expenses.length} entries`}
-          icon={<Wallet className="h-5 w-5" />}
-          accent="green"
+      {/* Stat cards — Spending Summary */}
+      <div>
+        <SubSection
+          section="expenses"
+          title="Spending Summary"
+          description="Total spend, approvals and outstanding amounts"
+          icon={<BarChart3 className="h-4 w-4" />}
         />
-        <StatCard
-          title="Approved"
-          value={formatCurrency(stats.approvedSum)}
-          subtitle={`${stats.approvedCount} entries`}
-          icon={<CheckCircle2 className="h-5 w-5" />}
-          accent="blue"
-        />
-        <StatCard
-          title="Pending"
-          value={formatCurrency(stats.pendingSum)}
-          subtitle={`${stats.pendingCount} awaiting review`}
-          icon={<Clock className="h-5 w-5" />}
-          accent="orange"
-        />
-        <StatCard
-          title="Rejected"
-          value={formatCurrency(stats.rejectedSum)}
-          subtitle={`${stats.rejectedCount} entries`}
-          icon={<XCircle className="h-5 w-5" />}
-          accent="red"
-        />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+          <StatCard
+            section="expenses"
+            title="Total Expenses"
+            value={formatCurrency(stats.total)}
+            subtitle={`${expenses.length} entries`}
+            icon={<Wallet className="h-5 w-5" />}
+          />
+          <StatCard
+            section="expenses"
+            title="Approved"
+            value={formatCurrency(stats.approvedSum)}
+            subtitle={`${stats.approvedCount} entries`}
+            icon={<CheckCircle2 className="h-5 w-5" />}
+          />
+          <StatCard
+            section="tasks"
+            title="Pending"
+            value={formatCurrency(stats.pendingSum)}
+            subtitle={`${stats.pendingCount} awaiting review`}
+            icon={<Clock className="h-5 w-5" />}
+          />
+          <StatCard
+            section="safety"
+            title="Rejected"
+            value={formatCurrency(stats.rejectedSum)}
+            subtitle={`${stats.rejectedCount} entries`}
+            icon={<XCircle className="h-5 w-5" />}
+          />
+        </div>
       </div>
 
       {/* Charts row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card className="lg:col-span-2 shadow-sm border-border/60">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base font-semibold">Budget vs Actual</CardTitle>
-            <CardDescription className="text-xs">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-pink-100 text-pink-700">
+                <BarChart3 className="h-4 w-4" />
+              </span>
+              Budget vs Actual
+            </CardTitle>
+            <CardDescription className="text-xs pl-9">
               Project budget vs (actual cost + approved expenses) in S$
             </CardDescription>
           </CardHeader>
           <CardContent>
             {budgetChart.length === 0 ? (
-              <div className="h-[260px] flex items-center justify-center text-sm text-muted-foreground">
-                No projects yet.
-              </div>
+              <EmptyState
+                icon={<BarChart3 className="h-6 w-6" />}
+                title="No projects yet"
+                description="Once projects exist, you can compare budget vs actual here."
+                className="h-[260px]"
+              />
             ) : (
               <ResponsiveContainer width="100%" height={260}>
-                <BarChart data={budgetChart} margin={{ top: 8, right: 8, left: 0, bottom: 30 }}>
+                <BarChart data={budgetChart} margin={{ top: 8, right: 8, left: 8, bottom: 30 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
                   <XAxis
                     dataKey="name"
@@ -387,7 +425,11 @@ export function ExpensesPage() {
                     textAnchor="end"
                     height={50}
                   />
-                  <YAxis tick={{ fontSize: 11, fill: '#64748b' }} tickFormatter={(v) => formatCurrency(v)} />
+                  <YAxis
+                    tick={{ fontSize: 11, fill: '#64748b' }}
+                    tickFormatter={(v) => formatCurrency(v)}
+                    label={{ value: 'S$', angle: -90, position: 'insideLeft', style: { fontSize: 11, fill: '#94a3b8' } }}
+                  />
                   <RTooltip
                     contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}
                     formatter={(v: any) => formatCurrency(v)}
@@ -403,16 +445,24 @@ export function ExpensesPage() {
 
         <Card className="shadow-sm border-border/60">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base font-semibold">Expense by Category</CardTitle>
-            <CardDescription className="text-xs">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-pink-100 text-pink-700">
+                <PieChartIcon className="h-4 w-4" />
+              </span>
+              Expense by Category
+            </CardTitle>
+            <CardDescription className="text-xs pl-9">
               Total amount per category (excludes rejected)
             </CardDescription>
           </CardHeader>
           <CardContent>
             {categoryChart.length === 0 ? (
-              <div className="h-[260px] flex items-center justify-center text-sm text-muted-foreground">
-                No expenses yet.
-              </div>
+              <EmptyState
+                icon={<PieChartIcon className="h-6 w-6" />}
+                title="No expenses yet"
+                description="Add some expenses to see the breakdown by category."
+                className="h-[260px]"
+              />
             ) : (
               <ResponsiveContainer width="100%" height={260}>
                 <PieChart>
@@ -446,86 +496,104 @@ export function ExpensesPage() {
       <Card className="shadow-sm border-border/60">
         <CardHeader className="pb-3">
           <CardTitle className="text-base font-semibold flex items-center gap-2">
-            <TrendingUp className="h-4 w-4 text-emerald-600" /> Project Profitability
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-pink-100 text-pink-700">
+              <TrendingUp className="h-4 w-4" />
+            </span>
+            Project Profitability
           </CardTitle>
-          <CardDescription className="text-xs">
+          <CardDescription className="text-xs pl-9">
             Budget, total spent and profit margin per project
           </CardDescription>
         </CardHeader>
         <CardContent>
           {profitability.length === 0 ? (
-            <div className="py-6 text-center text-sm text-muted-foreground">No projects yet.</div>
+            <EmptyState
+              icon={<TrendingUp className="h-6 w-6" />}
+              title="No projects yet"
+              description="Project profitability will appear once projects are created."
+              className="py-6"
+            />
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {profitability.map((p) => (
-                <div
-                  key={p.id}
-                  className={cn(
-                    'rounded-xl border p-4 transition-colors',
-                    p.overBudget
-                      ? 'border-red-200 bg-red-50/40'
-                      : 'border-slate-200 bg-slate-50/40',
-                  )}
-                >
-                  <div className="flex items-start justify-between gap-2 mb-3">
-                    <h4 className="font-semibold text-slate-900 text-sm truncate">{p.name}</h4>
-                    {p.overBudget ? (
-                      <Badge className="bg-red-100 text-red-700 border-red-200 shrink-0">Over Budget</Badge>
-                    ) : (
-                      <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 shrink-0">On Track</Badge>
+              {profitability.map((p) => {
+                const positive = p.profit >= 0
+                return (
+                  <div
+                    key={p.id}
+                    className={cn(
+                      'rounded-xl border p-4 transition-colors',
+                      p.overBudget
+                        ? 'border-red-200 bg-red-50/40'
+                        : 'border-slate-200 bg-slate-50/40',
                     )}
+                  >
+                    <div className="flex items-start justify-between gap-2 mb-3">
+                      <h4 className="font-semibold text-slate-900 text-sm truncate">{p.name || 'Untitled'}</h4>
+                      {p.overBudget ? (
+                        <Badge className="bg-red-100 text-red-700 border-red-200 shrink-0">Over Budget</Badge>
+                      ) : (
+                        <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 shrink-0">On Track</Badge>
+                      )}
+                    </div>
+                    <div className="space-y-2 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-600">Budget</span>
+                        <span className="font-semibold text-slate-900 tabular-nums">{formatCurrency(p.budget)}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-600">Actual Cost</span>
+                        <span className="font-medium text-slate-700 tabular-nums">{formatCurrency(p.actualCost)}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-600">Approved Expenses</span>
+                        <span className="font-medium text-slate-700 tabular-nums">{formatCurrency(p.expensesApproved)}</span>
+                      </div>
+                      <div className="flex items-center justify-between border-t border-slate-200 pt-2 mt-1">
+                        <span className="text-slate-700 font-medium">Total Spent</span>
+                        <span className="font-semibold text-slate-900 tabular-nums">{formatCurrency(p.totalSpent)}</span>
+                      </div>
+                      <Progress value={p.usedPct} className="h-1.5" />
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-600">Used</span>
+                        <span className={cn(
+                          'font-medium tabular-nums',
+                          p.usedPct > 100 ? 'text-red-600' : 'text-slate-700',
+                        )}>
+                          {p.usedPct}%
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between border-t border-slate-200 pt-2 mt-1">
+                        <span className={cn('flex items-center gap-1 font-medium', positive ? 'text-emerald-700' : 'text-red-700')}>
+                          {positive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                          Profit
+                        </span>
+                        <span className={cn(
+                          'font-bold tabular-nums',
+                          positive ? 'text-emerald-700' : 'text-red-700',
+                        )}>
+                          {formatCurrency(p.profit)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-600">Margin</span>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            'font-semibold tabular-nums',
+                            p.budget > 0
+                              ? (positive
+                                ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                                : 'bg-red-100 text-red-700 border-red-200')
+                              : 'bg-slate-100 text-slate-700 border-slate-200',
+                          )}
+                        >
+                          {p.budget > 0 ? `${p.marginPct}%` : '—'}
+                        </Badge>
+                      </div>
+                    </div>
                   </div>
-                  <div className="space-y-2 text-xs">
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-600">Budget</span>
-                      <span className="font-semibold text-slate-900 tabular-nums">{formatCurrency(p.budget)}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-600">Actual Cost</span>
-                      <span className="font-medium text-slate-700 tabular-nums">{formatCurrency(p.actualCost)}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-600">Approved Expenses</span>
-                      <span className="font-medium text-slate-700 tabular-nums">{formatCurrency(p.expensesApproved)}</span>
-                    </div>
-                    <div className="flex items-center justify-between border-t border-slate-200 pt-2 mt-1">
-                      <span className="text-slate-700 font-medium">Total Spent</span>
-                      <span className="font-semibold text-slate-900 tabular-nums">{formatCurrency(p.totalSpent)}</span>
-                    </div>
-                    <Progress value={p.usedPct} className="h-1.5" />
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-600">Used</span>
-                      <span className={cn(
-                        'font-medium tabular-nums',
-                        p.usedPct > 100 ? 'text-red-600' : 'text-slate-700',
-                      )}>
-                        {p.usedPct}%
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between border-t border-slate-200 pt-2 mt-1">
-                      <span className={cn('flex items-center gap-1 font-medium', p.profit >= 0 ? 'text-emerald-700' : 'text-red-700')}>
-                        {p.profit >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-                        Profit
-                      </span>
-                      <span className={cn(
-                        'font-bold tabular-nums',
-                        p.profit >= 0 ? 'text-emerald-700' : 'text-red-700',
-                      )}>
-                        {formatCurrency(p.profit)}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-600">Margin</span>
-                      <span className={cn(
-                        'font-semibold tabular-nums',
-                        p.marginPct >= 0 ? 'text-emerald-700' : 'text-red-700',
-                      )}>
-                        {p.budget > 0 ? `${p.marginPct}%` : '—'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </CardContent>
@@ -585,9 +653,12 @@ export function ExpensesPage() {
       <Card className="shadow-sm border-border/60">
         <CardHeader className="pb-3">
           <CardTitle className="text-base font-semibold flex items-center gap-2">
-            <FileText className="h-4 w-4 text-emerald-600" /> Expense Records
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-pink-100 text-pink-700">
+              <FileText className="h-4 w-4" />
+            </span>
+            Expense Records
           </CardTitle>
-          <CardDescription className="text-xs">
+          <CardDescription className="text-xs pl-9">
             {filteredExpenses.length} of {expenses.length} entries · Approve or reject pending expenses
           </CardDescription>
         </CardHeader>
@@ -596,21 +667,30 @@ export function ExpensesPage() {
             <Table>
               <TableHeader className="sticky top-0 bg-card z-10">
                 <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Project</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  <TableHead>Paid By</TableHead>
-                  <TableHead>Approval</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead className="min-w-[110px]">Date</TableHead>
+                  <TableHead className="min-w-[160px]">Project</TableHead>
+                  <TableHead className="min-w-[150px]">Category</TableHead>
+                  <TableHead className="min-w-[200px]">Description</TableHead>
+                  <TableHead className="text-right min-w-[100px]">Amount</TableHead>
+                  <TableHead className="min-w-[120px]">Paid By</TableHead>
+                  <TableHead className="min-w-[100px]">Approval</TableHead>
+                  <TableHead className="text-right min-w-[180px]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredExpenses.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center text-muted-foreground py-10">
-                      No expenses match the current filters.
+                    <TableCell colSpan={8} className="p-0">
+                      <EmptyState
+                        icon={<FileText className="h-6 w-6" />}
+                        title="No expenses match the current filters"
+                        description="Try clearing filters or record a new expense."
+                        action={
+                          <Button size="sm" onClick={openAddExpense} className="bg-pink-600 hover:bg-pink-700 text-white">
+                            <Plus className="h-4 w-4" /> Add Expense
+                          </Button>
+                        }
+                      />
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -626,10 +706,10 @@ export function ExpensesPage() {
                         </div>
                       </TableCell>
                       <TableCell className="text-right tabular-nums font-semibold text-slate-900">
-                        {formatCurrency(Number(e.amount))}
+                        {formatCurrency(Number(e.amount ?? 0))}
                       </TableCell>
                       <TableCell className="text-muted-foreground text-xs">{e.paidBy || '—'}</TableCell>
-                      <TableCell><StatusBadge status={e.approvalStatus} /></TableCell>
+                      <TableCell><ApprovalBadge status={e.approvalStatus} /></TableCell>
                       <TableCell>
                         <div className="flex items-center justify-end gap-1">
                           {e.approvalStatus === 'Pending' && (
@@ -637,20 +717,22 @@ export function ExpensesPage() {
                               <Button
                                 size="icon"
                                 variant="ghost"
-                                className="h-8 w-8 text-emerald-600 hover:bg-emerald-50"
+                                className="h-8 w-8 text-emerald-600 hover:bg-emerald-50 md:h-8 md:px-2 md:w-auto"
                                 onClick={() => setApproval(e.id, 'Approved')}
                                 title="Approve"
                               >
                                 <Check className="h-4 w-4" />
+                                <span className="hidden md:inline text-xs">Approve</span>
                               </Button>
                               <Button
                                 size="icon"
                                 variant="ghost"
-                                className="h-8 w-8 text-red-600 hover:bg-red-50"
+                                className="h-8 w-8 text-red-600 hover:bg-red-50 md:h-8 md:px-2 md:w-auto"
                                 onClick={() => setApproval(e.id, 'Rejected')}
                                 title="Reject"
                               >
                                 <X className="h-4 w-4" />
+                                <span className="hidden md:inline text-xs">Reject</span>
                               </Button>
                             </>
                           )}
@@ -688,7 +770,7 @@ export function ExpensesPage() {
         open={expenseDialog.open}
         onOpenChange={(o) => setExpenseDialog((s) => ({ ...s, open: o }))}
       >
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="w-full sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>
               {expenseDialog.mode === 'add' ? 'Add New Expense' : 'Edit Expense'}
@@ -807,7 +889,7 @@ export function ExpensesPage() {
                   onClick={() => document.getElementById('e-receipt-file')?.click()}
                   className="shrink-0"
                 >
-                  <Upload className="h-4 w-4" /> Upload
+                  <Upload className="h-4 w-4" /> <span className="hidden sm:inline">Upload</span>
                 </Button>
                 <input
                   id="e-receipt-file"
@@ -831,7 +913,7 @@ export function ExpensesPage() {
             <Button
               onClick={submitExpense}
               disabled={saving}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              className="bg-pink-600 hover:bg-pink-700 text-white"
             >
               {saving ? 'Saving…' : expenseDialog.mode === 'add' ? 'Add Expense' : 'Save Changes'}
             </Button>

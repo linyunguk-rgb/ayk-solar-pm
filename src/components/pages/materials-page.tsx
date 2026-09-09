@@ -1,10 +1,11 @@
 'use client'
 
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState } from 'react'
 import { useAppStore } from '@/store/app-store'
 import { useFetch, apiPost, apiPut, apiDelete } from '@/hooks/use-fetch'
-import { PageHeader } from '@/components/shared/page-header'
+import { SectionHeader, SubSection } from '@/components/shared/section-header'
 import { StatCard } from '@/components/shared/stat-card'
+import { EmptyState } from '@/components/shared/empty-state'
 import {
   Card, CardContent, CardHeader, CardTitle, CardDescription,
 } from '@/components/ui/card'
@@ -32,7 +33,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import {
   Package, Plus, ArrowLeftRight, AlertTriangle, Pencil, Trash2,
   ArrowDownToLine, ArrowUpFromLine, ArrowLeft as ArrowIn, Boxes, Layers,
-  DollarSign, PackageX, Warehouse,
+  DollarSign, PackageX, Warehouse, BarChart3,
 } from 'lucide-react'
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -73,9 +74,10 @@ function TransactionTypeBadge({ type }: { type: string }) {
   return <Badge variant="outline" className={cn('font-medium', cls)}>{type}</Badge>
 }
 
-function formatQty(n: number): string {
-  if (n === null || n === undefined) return '0'
-  return Number.isInteger(n) ? String(n) : String(n)
+function formatQty(n: number | null | undefined): string {
+  const v = Number(n ?? 0)
+  if (!isFinite(v)) return '0'
+  return Number.isInteger(v) ? String(v) : String(v)
 }
 
 interface MaterialFormState {
@@ -158,7 +160,7 @@ export function MaterialsPage() {
   const filteredMaterials = useMemo(() => {
     let arr = [...materials]
     if (categoryFilter !== 'all') arr = arr.filter((m) => m.category === categoryFilter)
-    if (lowStockOnly) arr = arr.filter((m) => Number(m.stockQty) <= Number(m.minStockLevel))
+    if (lowStockOnly) arr = arr.filter((m) => Number(m.stockQty ?? 0) <= Number(m.minStockLevel ?? 0))
     return arr
   }, [materials, categoryFilter, lowStockOnly])
 
@@ -174,16 +176,16 @@ export function MaterialsPage() {
   // Stats
   const stats = useMemo(() => {
     const total = materials.length
-    const lowStock = materials.filter((m) => Number(m.stockQty) <= Number(m.minStockLevel)).length
-    const outOfStock = materials.filter((m) => Number(m.stockQty) <= 0).length
-    const totalStockValue = materials.reduce((s, m) => s + Number(m.stockQty) * Number(m.unitPrice), 0)
+    const lowStock = materials.filter((m) => Number(m.stockQty ?? 0) <= Number(m.minStockLevel ?? 0)).length
+    const outOfStock = materials.filter((m) => Number(m.stockQty ?? 0) <= 0).length
+    const totalStockValue = materials.reduce((s, m) => s + (Number(m.stockQty ?? 0) * Number(m.unitPrice ?? 0)), 0)
     const categories = new Set(materials.map((m) => m.category)).size
     return { total, lowStock, outOfStock, totalStockValue, categories }
   }, [materials])
 
   // Low stock materials (for alert card)
   const lowStockMaterials = useMemo(
-    () => materials.filter((m) => Number(m.stockQty) <= Number(m.minStockLevel)),
+    () => materials.filter((m) => Number(m.stockQty ?? 0) <= Number(m.minStockLevel ?? 0)),
     [materials],
   )
 
@@ -198,9 +200,9 @@ export function MaterialsPage() {
       const key = t.materialId || 'unknown'
       const mname = t.material?.name || 'Unknown'
       if (!map[key]) map[key] = { name: mname, issued: 0, added: 0, returned: 0 }
-      if (t.type === 'Issue') map[key].issued += Number(t.qty)
-      else if (t.type === 'Add') map[key].added += Number(t.qty)
-      else if (t.type === 'Return') map[key].returned += Number(t.qty)
+      if (t.type === 'Issue') map[key].issued += Number(t.qty ?? 0)
+      else if (t.type === 'Add') map[key].added += Number(t.qty ?? 0)
+      else if (t.type === 'Return') map[key].returned += Number(t.qty ?? 0)
     }
     return Object.values(map).sort((a, b) => b.issued - a.issued).slice(0, 10)
   }, [transactions])
@@ -290,8 +292,8 @@ export function MaterialsPage() {
         remarks: tForm.remarks?.trim() || null,
         date: new Date().toISOString(),
       }
-      const res = await apiPost<any>('/api/transactions', body)
-      toast.success(`${tForm.type} ${body.qty} ${tForm.materialId ? '' : ''} — stock updated`)
+      await apiPost<any>('/api/transactions', body)
+      toast.success(`${tForm.type} ${body.qty} — stock updated`)
       setTxnDialog({ open: false })
       refetchMaterials()
       refetchTxns()
@@ -315,111 +317,142 @@ export function MaterialsPage() {
     }
   }
 
-  // ---------- Render ----------
+  // ---------- Render: Loading ----------
   if (loadingMaterials && !materialsData) {
     return (
       <div className="space-y-6">
-        <PageHeader
+        <SectionHeader
+          section="materials"
           title="Material Management"
           description="Track solar materials, stock and transactions"
-          icon={<Package className="h-5 w-5" />}
+          icon={<Package className="h-6 w-6" />}
         />
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Card key={i}><CardContent className="p-4 h-28"><Skeleton className="h-full w-full" /></CardContent></Card>
-          ))}
+        <div>
+          <SubSection section="materials" title="Inventory Summary" icon={<BarChart3 className="h-4 w-4" />} />
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Card key={i} className="overflow-hidden border-border/60">
+                <CardContent className="p-4 h-28">
+                  <Skeleton className="h-full w-full" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         </div>
-        <Card><CardContent className="p-6"><Skeleton className="h-72 w-full" /></CardContent></Card>
+        <Card className="overflow-hidden border-border/60">
+          <CardContent className="p-6">
+            <Skeleton className="h-72 w-full" />
+          </CardContent>
+        </Card>
       </div>
     )
   }
 
   return (
     <div className="space-y-6">
-      <PageHeader
+      <SectionHeader
+        section="materials"
         title="Material Management"
         description="Track solar materials, stock and transactions"
-        icon={<Package className="h-5 w-5" />}
+        icon={<Package className="h-6 w-6" />}
         actions={
           <>
-            <Button onClick={openAddMaterial} className="bg-emerald-600 hover:bg-emerald-700 text-white">
-              <Plus className="h-4 w-4" /> Add Material
+            <Button onClick={openAddMaterial} className="bg-violet-600 hover:bg-violet-700 text-white">
+              <Plus className="h-4 w-4" /> <span className="hidden sm:inline">Add Material</span><span className="sm:hidden">Add</span>
             </Button>
-            <Button variant="outline" onClick={() => openTxnDialog()}>
-              <ArrowLeftRight className="h-4 w-4" /> New Transaction
+            <Button variant="outline" onClick={() => openTxnDialog()} className="border-violet-200 text-violet-700 hover:bg-violet-50">
+              <ArrowLeftRight className="h-4 w-4" /> <span className="hidden sm:inline">New Transaction</span><span className="sm:hidden">Transaction</span>
             </Button>
           </>
         }
       />
 
-      {/* Stat cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
-        <StatCard
-          title="Total Materials"
-          value={stats.total}
-          subtitle={`${stats.categories} categories`}
-          icon={<Boxes className="h-5 w-5" />}
-          accent="green"
+      {/* Stat cards — Inventory Summary */}
+      <div>
+        <SubSection
+          section="materials"
+          title="Inventory Summary"
+          description="Stock levels and inventory value at a glance"
+          icon={<BarChart3 className="h-4 w-4" />}
         />
-        <StatCard
-          title="Low Stock Items"
-          value={stats.lowStock}
-          subtitle="At/below minimum"
-          icon={<AlertTriangle className="h-5 w-5" />}
-          accent="red"
-        />
-        <StatCard
-          title="Total Stock Value"
-          value={formatCurrency(stats.totalStockValue)}
-          subtitle="Inventory worth"
-          icon={<DollarSign className="h-5 w-5" />}
-          accent="purple"
-        />
-        <StatCard
-          title="Categories"
-          value={stats.categories}
-          subtitle="Distinct types"
-          icon={<Layers className="h-5 w-5" />}
-          accent="blue"
-        />
-        <StatCard
-          title="Out of Stock"
-          value={stats.outOfStock}
-          subtitle="Zero on hand"
-          icon={<PackageX className="h-5 w-5" />}
-          accent="orange"
-        />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+          <StatCard
+            section="materials"
+            title="Total Materials"
+            value={stats.total ?? 0}
+            subtitle={`${stats.categories ?? 0} categories`}
+            icon={<Boxes className="h-5 w-5" />}
+          />
+          <StatCard
+            section="safety"
+            title="Low Stock Items"
+            value={stats.lowStock ?? 0}
+            subtitle={`${stats.outOfStock ?? 0} out of stock`}
+            icon={<AlertTriangle className="h-5 w-5" />}
+          />
+          <StatCard
+            section="materials"
+            title="Total Stock Value"
+            value={formatCurrency(stats.totalStockValue)}
+            subtitle="Inventory worth"
+            icon={<DollarSign className="h-5 w-5" />}
+          />
+          <StatCard
+            section="materials"
+            title="Categories"
+            value={stats.categories ?? 0}
+            subtitle="Distinct types"
+            icon={<Layers className="h-5 w-5" />}
+          />
+        </div>
       </div>
 
       {/* Low stock alert card */}
       {lowStockMaterials.length > 0 && (
-        <Card className="border-amber-200 bg-amber-50/40">
+        <Card className="border-amber-300 bg-amber-50/60">
           <CardHeader className="pb-3">
-            <CardTitle className="text-base font-semibold flex items-center gap-2 text-amber-700">
-              <AlertTriangle className="h-4 w-4" /> Low Stock Alert
+            <CardTitle className="text-base font-semibold flex items-center gap-2 text-amber-800">
+              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-200 text-amber-800">
+                <AlertTriangle className="h-4 w-4" />
+              </span>
+              Low Stock Alert
+              <Badge className="bg-amber-200 text-amber-800 border-amber-300 ml-1">{lowStockMaterials.length}</Badge>
             </CardTitle>
-            <CardDescription className="text-xs text-amber-700/80">
+            <CardDescription className="text-xs text-amber-800/80 pl-9">
               {lowStockMaterials.length} item(s) at or below minimum stock level — please restock
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-64 overflow-y-auto ayk-scrollbar pr-1">
-              {lowStockMaterials.map((m) => (
-                <div
-                  key={m.id}
-                  className="flex items-center justify-between rounded-lg border border-amber-200 bg-white px-3 py-2.5"
-                >
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium text-slate-900 truncate">{m.name}</div>
-                    <div className="text-xs text-slate-500">
-                      Min: {formatQty(m.minStockLevel)} {m.unit}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-72 overflow-y-auto ayk-scrollbar pr-1">
+              {lowStockMaterials.map((m) => {
+                const out = Number(m.stockQty ?? 0) <= 0
+                return (
+                  <div
+                    key={m.id}
+                    className={cn(
+                      'flex items-center justify-between rounded-lg border bg-white px-3 py-2.5',
+                      out ? 'border-red-200' : 'border-amber-200',
+                    )}
+                  >
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-slate-900 truncate">{m.name || 'Unnamed'}</div>
+                      <div className="text-xs text-slate-500">
+                        Min: {formatQty(m.minStockLevel)} {m.unit || ''}
+                      </div>
                     </div>
+                    <Badge
+                      className={cn(
+                        'shrink-0',
+                        out
+                          ? 'bg-red-100 text-red-700 border-red-200'
+                          : 'bg-amber-100 text-amber-800 border-amber-200',
+                      )}
+                    >
+                      {formatQty(m.stockQty)} {m.unit || ''}
+                    </Badge>
                   </div>
-                  <Badge className="bg-red-100 text-red-700 border-red-200 shrink-0">
-                    {formatQty(m.stockQty)} {m.unit}
-                  </Badge>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </CardContent>
         </Card>
@@ -427,9 +460,13 @@ export function MaterialsPage() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'inventory' | 'transactions')}>
-        <TabsList className="bg-slate-100/70">
-          <TabsTrigger value="inventory"><Package className="h-4 w-4" /> Inventory</TabsTrigger>
-          <TabsTrigger value="transactions"><ArrowLeftRight className="h-4 w-4" /> Transactions</TabsTrigger>
+        <TabsList className="bg-violet-50">
+          <TabsTrigger value="inventory" className="data-[state=active]:bg-white data-[state=active]:text-violet-700">
+            <Package className="h-4 w-4" /> <span className="hidden sm:inline">Inventory</span>
+          </TabsTrigger>
+          <TabsTrigger value="transactions" className="data-[state=active]:bg-white data-[state=active]:text-violet-700">
+            <ArrowLeftRight className="h-4 w-4" /> <span className="hidden sm:inline">Transactions</span>
+          </TabsTrigger>
         </TabsList>
 
         {/* Inventory tab */}
@@ -475,9 +512,12 @@ export function MaterialsPage() {
           <Card className="shadow-sm border-border/60">
             <CardHeader className="pb-3">
               <CardTitle className="text-base font-semibold flex items-center gap-2">
-                <Warehouse className="h-4 w-4 text-emerald-600" /> Inventory List
+                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-100 text-violet-700">
+                  <Warehouse className="h-4 w-4" />
+                </span>
+                Inventory List
               </CardTitle>
-              <CardDescription className="text-xs">
+              <CardDescription className="text-xs pl-9">
                 Manage stock levels, pricing and supplier details
               </CardDescription>
             </CardHeader>
@@ -486,45 +526,57 @@ export function MaterialsPage() {
                 <Table>
                   <TableHeader className="sticky top-0 bg-card z-10">
                     <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Category</TableHead>
-                      <TableHead className="text-right">Stock Qty</TableHead>
-                      <TableHead>Unit</TableHead>
-                      <TableHead className="text-right">Min Level</TableHead>
-                      <TableHead className="text-right">Unit Price</TableHead>
-                      <TableHead className="text-right">Stock Value</TableHead>
-                      <TableHead>Supplier</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
+                      <TableHead className="min-w-[180px]">Name</TableHead>
+                      <TableHead className="min-w-[120px]">Category</TableHead>
+                      <TableHead className="text-right min-w-[90px]">Stock Qty</TableHead>
+                      <TableHead className="min-w-[70px]">Unit</TableHead>
+                      <TableHead className="text-right min-w-[90px]">Min Level</TableHead>
+                      <TableHead className="text-right min-w-[100px]">Unit Price</TableHead>
+                      <TableHead className="text-right min-w-[110px]">Stock Value</TableHead>
+                      <TableHead className="min-w-[140px]">Supplier</TableHead>
+                      <TableHead className="text-right min-w-[180px]">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredMaterials.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={9} className="text-center text-muted-foreground py-10">
-                          No materials match the current filters.
+                        <TableCell colSpan={9} className="p-0">
+                          <EmptyState
+                            icon={<PackageX className="h-6 w-6" />}
+                            title="No materials match the current filters"
+                            description="Try clearing filters or add a new material to get started."
+                            action={
+                              <Button size="sm" onClick={openAddMaterial} className="bg-violet-600 hover:bg-violet-700 text-white">
+                                <Plus className="h-4 w-4" /> Add Material
+                              </Button>
+                            }
+                          />
                         </TableCell>
                       </TableRow>
                     ) : (
                       filteredMaterials.map((m) => {
-                        const isLow = Number(m.stockQty) <= Number(m.minStockLevel)
-                        const stockValue = Number(m.stockQty) * Number(m.unitPrice)
+                        const isLow = Number(m.stockQty ?? 0) <= Number(m.minStockLevel ?? 0)
+                        const stockValue = (Number(m.stockQty ?? 0)) * (Number(m.unitPrice ?? 0))
                         return (
                           <TableRow key={m.id}>
-                            <TableCell className="font-medium text-slate-900">{m.name}</TableCell>
+                            <TableCell className="font-medium text-slate-900">{m.name || 'Unnamed'}</TableCell>
                             <TableCell><CategoryBadge category={m.category} /></TableCell>
                             <TableCell className="text-right">
                               <span
                                 className={cn(
-                                  'font-semibold tabular-nums',
-                                  isLow ? 'text-red-600' : 'text-emerald-600',
+                                  'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-semibold tabular-nums',
+                                  isLow
+                                    ? 'bg-red-100 text-red-700'
+                                    : 'bg-emerald-100 text-emerald-700',
                                 )}
                               >
+                                {isLow && <AlertTriangle className="h-3 w-3" />}
                                 {formatQty(m.stockQty)}
                               </span>
                             </TableCell>
-                            <TableCell className="text-muted-foreground">{m.unit}</TableCell>
+                            <TableCell className="text-muted-foreground">{m.unit || '—'}</TableCell>
                             <TableCell className="text-right tabular-nums text-slate-600">{formatQty(m.minStockLevel)}</TableCell>
-                            <TableCell className="text-right tabular-nums text-slate-700">{formatCurrency(Number(m.unitPrice))}</TableCell>
+                            <TableCell className="text-right tabular-nums text-slate-700">{formatCurrency(Number(m.unitPrice ?? 0))}</TableCell>
                             <TableCell className="text-right tabular-nums font-medium text-slate-900">{formatCurrency(stockValue)}</TableCell>
                             <TableCell className="text-muted-foreground text-xs">{m.supplier || '—'}</TableCell>
                             <TableCell>
@@ -641,9 +693,12 @@ export function MaterialsPage() {
           <Card className="shadow-sm border-border/60">
             <CardHeader className="pb-3">
               <CardTitle className="text-base font-semibold flex items-center gap-2">
-                <ArrowLeftRight className="h-4 w-4 text-emerald-600" /> Material Transactions
+                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-100 text-violet-700">
+                  <ArrowLeftRight className="h-4 w-4" />
+                </span>
+                Material Transactions
               </CardTitle>
-              <CardDescription className="text-xs">
+              <CardDescription className="text-xs pl-9">
                 Stock movements — adds, issues and returns
               </CardDescription>
             </CardHeader>
@@ -652,12 +707,12 @@ export function MaterialsPage() {
                 <Table>
                   <TableHeader className="sticky top-0 bg-card z-10">
                     <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Material</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead className="text-right">Qty</TableHead>
-                      <TableHead>Project</TableHead>
-                      <TableHead>Remarks</TableHead>
+                      <TableHead className="min-w-[110px]">Date</TableHead>
+                      <TableHead className="min-w-[180px]">Material</TableHead>
+                      <TableHead className="min-w-[90px]">Type</TableHead>
+                      <TableHead className="text-right min-w-[80px]">Qty</TableHead>
+                      <TableHead className="min-w-[160px]">Project</TableHead>
+                      <TableHead className="min-w-[200px]">Remarks</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -669,8 +724,12 @@ export function MaterialsPage() {
                       </TableRow>
                     ) : filteredTxns.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center text-muted-foreground py-10">
-                          No transactions match the current filters.
+                        <TableCell colSpan={6} className="p-0">
+                          <EmptyState
+                            icon={<ArrowLeftRight className="h-6 w-6" />}
+                            title="No transactions match the current filters"
+                            description="Try clearing filters or record a new stock movement."
+                          />
                         </TableCell>
                       </TableRow>
                     ) : (
@@ -700,19 +759,29 @@ export function MaterialsPage() {
       </Tabs>
 
       {/* Material usage chart */}
-      {usageChart.length > 0 && (
-        <Card className="shadow-sm border-border/60">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <Boxes className="h-4 w-4 text-emerald-600" /> Material Usage — Last 30 Days
-            </CardTitle>
-            <CardDescription className="text-xs">
-              Total quantity added, issued and returned per material
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+      <Card className="shadow-sm border-border/60">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base font-semibold flex items-center gap-2">
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-100 text-violet-700">
+              <BarChart3 className="h-4 w-4" />
+            </span>
+            Material Usage — Last 30 Days
+          </CardTitle>
+          <CardDescription className="text-xs pl-9">
+            Total quantity added, issued and returned per material (units: qty)
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {usageChart.length === 0 ? (
+            <EmptyState
+              icon={<BarChart3 className="h-6 w-6" />}
+              title="No material movements in the last 30 days"
+              description="Once you record stock transactions, usage trends will appear here."
+              className="h-[280px]"
+            />
+          ) : (
             <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={usageChart} margin={{ top: 8, right: 8, left: 0, bottom: 30 }}>
+              <BarChart data={usageChart} margin={{ top: 8, right: 8, left: 8, bottom: 30 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
                 <XAxis
                   dataKey="name"
@@ -722,7 +791,10 @@ export function MaterialsPage() {
                   textAnchor="end"
                   height={60}
                 />
-                <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
+                <YAxis
+                  tick={{ fontSize: 11, fill: '#64748b' }}
+                  label={{ value: 'qty', angle: -90, position: 'insideLeft', style: { fontSize: 11, fill: '#94a3b8' } }}
+                />
                 <RTooltip contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }} />
                 <Legend iconType="circle" wrapperStyle={{ fontSize: 11 }} />
                 <Bar dataKey="added" name="Added" fill="#10b981" radius={[4, 4, 0, 0]} />
@@ -730,16 +802,16 @@ export function MaterialsPage() {
                 <Bar dataKey="returned" name="Returned" fill="#f59e0b" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      )}
+          )}
+        </CardContent>
+      </Card>
 
       {/* Add/Edit Material Dialog */}
       <Dialog
         open={materialDialog.open}
         onOpenChange={(o) => setMaterialDialog((s) => ({ ...s, open: o }))}
       >
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="w-full sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>
               {materialDialog.mode === 'add' ? 'Add New Material' : 'Edit Material'}
@@ -839,7 +911,7 @@ export function MaterialsPage() {
             <Button
               onClick={submitMaterial}
               disabled={savingMaterial}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              className="bg-violet-600 hover:bg-violet-700 text-white"
             >
               {savingMaterial ? 'Saving…' : materialDialog.mode === 'add' ? 'Add Material' : 'Save Changes'}
             </Button>
@@ -852,7 +924,7 @@ export function MaterialsPage() {
         open={txnDialog.open}
         onOpenChange={(o) => setTxnDialog((s) => ({ ...s, open: o }))}
       >
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="w-full sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>
               {txnDialog.material
@@ -947,7 +1019,7 @@ export function MaterialsPage() {
             <Button
               onClick={submitTxn}
               disabled={savingTxn}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              className="bg-violet-600 hover:bg-violet-700 text-white"
             >
               {savingTxn ? 'Saving…' : 'Record Transaction'}
             </Button>

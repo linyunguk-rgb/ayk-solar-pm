@@ -1,0 +1,699 @@
+     1→     1→'use client'
+     2→     2→import { useState, useMemo, useCallback } from 'react'
+     3→     3→import { useAppStore } from '@/store/app-store'
+     4→     4→import { useFetch, apiPost, apiPut, apiDelete } from '@/hooks/use-fetch'
+     5→     5→import { PageHeader } from '@/components/shared/page-header'
+     6→     6→import { StatusBadge, PriorityBadge } from '@/components/shared/status-badge'
+     7→     7→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+     8→     8→import { Button } from '@/components/ui/button'
+     9→     9→import { Input } from '@/components/ui/input'
+    10→    10→import { Textarea } from '@/components/ui/textarea'
+    11→    11→import { Label } from '@/components/ui/label'
+    12→    12→import { Badge } from '@/components/ui/badge'
+    13→    13→import { Progress } from '@/components/ui/progress'
+    14→    14→import { Slider } from '@/components/ui/slider'
+    15→    15→import {
+    16→    16→  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+    17→    17→} from '@/components/ui/select'
+    18→    18→import {
+    19→    19→  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
+    20→    20→} from '@/components/ui/dialog'
+    21→    21→import {
+    22→    22→  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+    23→    23→  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+    24→    24→} from '@/components/ui/alert-dialog'
+    25→    25→import {
+    26→    26→  Table, TableHeader, TableBody, TableHead, TableRow, TableCell,
+    27→    27→} from '@/components/ui/table'
+    28→    28→import {
+    29→    29→  ListChecks, Plus, LayoutGrid, List, Filter, Pencil, Trash2, AlertTriangle, Search, X,
+    30→    30→} from 'lucide-react'
+    31→    31→import { TASK_STATUSES, TASK_STATUS_LABELS, TASK_PRIORITIES, formatDate } from '@/lib/constants'
+    32→    32→import { toast } from 'sonner'
+    33→    33→import { cn } from '@/lib/utils'
+    34→    34→
+    35→    35→interface TaskItem {
+    36→    36→  id: string
+    37→    37→  title: string
+    38→    38→  description?: string | null
+    39→    39→  projectId?: string | null
+    40→    40→  project?: { id: string; name: string } | null
+    41→    41→  assignedToId?: string | null
+    42→    42→  assignedTo?: { id: string; name: string } | null
+    43→    43→  assignedToName?: string | null
+    44→    44→  team?: string | null
+    45→    45→  priority: string
+    46→    46→  status: string
+    47→    47→  progress: number
+    48→    48→  startDate: string
+    49→    49→  dueDate: string
+    50→    50→  completedAt?: string | null
+    51→    51→  remarks?: string | null
+    52→    52→  isOverdue: boolean
+    53→    53→}
+    54→    54→
+    55→    55→interface ProjectOption { id: string; name: string }
+    56→    56→interface UserOption { id: string; name: string; role: string }
+    57→    57→
+    58→    58→const COLUMN_DEFS: { key: string; label: string; accent: string; dot: string }[] = [
+    59→    59→  { key: 'Todo', label: 'To Do', accent: 'text-slate-700', dot: 'bg-slate-400' },
+    60→    60→  { key: 'InProgress', label: 'In Progress', accent: 'text-blue-700', dot: 'bg-blue-500' },
+    61→    61→  { key: 'Completed', label: 'Completed', accent: 'text-emerald-700', dot: 'bg-emerald-500' },
+    62→    62→  { key: 'Delayed', label: 'Delayed', accent: 'text-red-700', dot: 'bg-red-500' },
+    63→    63→]
+    64→    64→
+    65→    65→const PRIORITY_DOT: Record<string, string> = {
+    66→    66→  Low: 'bg-slate-400',
+    67→    67→  Medium: 'bg-blue-500',
+    68→    68→  High: 'bg-orange-500',
+    69→    69→  Critical: 'bg-red-500',
+    70→    70→}
+    71→    71→
+    72→    72→function emptyForm(): TaskFormState {
+    73→    73→  return {
+    74→    74→    title: '', description: '', projectId: '', assignedToId: '', assignedToName: '',
+    75→    75→    team: '', priority: 'Medium', status: 'Todo', progress: 0,
+    76→    76→    startDate: new Date().toISOString().slice(0, 10),
+    77→    77→    dueDate: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
+    78→    78→    remarks: '',
+    79→    79→  }
+    80→    80→}
+    81→    81→
+    82→    82→interface TaskFormState {
+    83→    83→  title: string
+    84→    84→  description: string
+    85→    85→  projectId: string
+    86→    86→  assignedToId: string
+    87→    87→  assignedToName: string
+    88→    88→  team: string
+    89→    89→  priority: string
+    90→    90→  status: string
+    91→    91→  progress: number
+    92→    92→  startDate: string
+    93→    93→  dueDate: string
+    94→    94→  remarks: string
+    95→    95→}
+    96→    96→
+    97→    97→export function TasksPage() {
+    98→    98→  const { user } = useAppStore()
+    99→    99→
+   100→   100→  // Filters
+   101→   101→  const [projectFilter, setProjectFilter] = useState<string>('all')
+   102→   102→  const [statusFilter, setStatusFilter] = useState<string>('all')
+   103→   103→  const [priorityFilter, setPriorityFilter] = useState<string>('all')
+   104→   104→  const [assigneeFilter, setAssigneeFilter] = useState<string>('all')
+   105→   105→
+   106→   106→  const [view, setView] = useState<'board' | 'list'>('board')
+   107→   107→  const [dialogOpen, setDialogOpen] = useState(false)
+   108→   108→  const [editing, setEditing] = useState<TaskItem | null>(null)
+   109→   109→  const [form, setForm] = useState<TaskFormState>(emptyForm())
+   110→   110→  const [deleteId, setDeleteId] = useState<string | null>(null)
+   111→   111→  const [submitting, setSubmitting] = useState(false)
+   112→   112→
+   113→   113→  const tasksUrl = useMemo(() => {
+   114→   114→    const params = new URLSearchParams()
+   115→   115→    if (projectFilter !== 'all') params.set('projectId', projectFilter)
+   116→   116→    if (statusFilter !== 'all') params.set('status', statusFilter)
+   117→   117→    if (assigneeFilter !== 'all') params.set('assignedToId', assigneeFilter)
+   118→   118→    const q = params.toString()
+   119→   119→    return `/api/tasks${q ? `?${q}` : ''}`
+   120→   120→  }, [projectFilter, statusFilter, assigneeFilter])
+   121→   121→
+   122→   122→  const { data, loading, refetch } = useFetch<{ tasks: TaskItem[] }>(tasksUrl)
+   123→   123→  const { data: projData } = useFetch<{ projects: ProjectOption[] }>('/api/projects')
+   124→   124→  const { data: usersData } = useFetch<{ users: UserOption[] }>('/api/users')
+   125→   125→
+   126→   126→  const tasks = data?.tasks ?? []
+   127→   127→  const projects = projData?.projects ?? []
+   128→   128→  const users = usersData?.users ?? []
+   129→   129→
+   130→   130→  const overdueCount = useMemo(() => tasks.filter((t) => t.isOverdue).length, [tasks])
+   131→   131→
+   132→   132→  const openNew = useCallback(() => {
+   133→   133→    setEditing(null)
+   134→   134→    setForm(emptyForm())
+   135→   135→    setDialogOpen(true)
+   136→   136→  }, [])
+   137→   137→
+   138→   138→  const openEdit = useCallback((task: TaskItem) => {
+   139→   139→    setEditing(task)
+   140→   140→    setForm({
+   141→   141→      title: task.title || '',
+   142→   142→      description: task.description || '',
+   143→   143→      projectId: task.projectId || '',
+   144→   144→      assignedToId: task.assignedToId || '',
+   145→   145→      assignedToName: task.assignedToName || task.assignedTo?.name || '',
+   146→   146→      team: task.team || '',
+   147→   147→      priority: task.priority || 'Medium',
+   148→   148→      status: task.status || 'Todo',
+   149→   149→      progress: Number(task.progress) || 0,
+   150→   150→      startDate: task.startDate ? new Date(task.startDate).toISOString().slice(0, 10) : '',
+   151→   151→      dueDate: task.dueDate ? new Date(task.dueDate).toISOString().slice(0, 10) : '',
+   152→   152→      remarks: task.remarks || '',
+   153→   153→    })
+   154→   154→    setDialogOpen(true)
+   155→   155→  }, [])
+   156→   156→
+   157→   157→  const handleSubmit = async () => {
+   158→   158→    if (!form.title.trim() || !form.dueDate) {
+   159→   159→      toast.error('Title and due date are required')
+   160→   160→      return
+   161→   161→    }
+   162→   162→    setSubmitting(true)
+   163→   163→    try {
+   164→   164→      const payload = {
+   165→   165→        title: form.title.trim(),
+   166→   166→        description: form.description.trim() || undefined,
+   167→   167→        projectId: form.projectId || undefined,
+   168→   168→        assignedToId: form.assignedToId || undefined,
+   169→   169→        assignedToName: form.assignedToName || undefined,
+   170→   170→        team: form.team.trim() || undefined,
+   171→   171→        priority: form.priority,
+   172→   172→        status: form.status,
+   173→   173→        progress: Number(form.progress) || 0,
+   174→   174→        startDate: form.startDate,
+   175→   175→        dueDate: form.dueDate,
+   176→   176→        remarks: form.remarks.trim() || undefined,
+   177→   177→      }
+   178→   178→      if (editing) {
+   179→   179→        await apiPut(`/api/tasks/${editing.id}`, payload)
+   180→   180→        toast.success('Task updated')
+   181→   181→      } else {
+   182→   182→        await apiPost('/api/tasks', payload)
+   183→   183→        toast.success('Task created')
+   184→   184→      }
+   185→   185→      setDialogOpen(false)
+   186→   186→      await refetch()
+   187→   187→    } catch (e: any) {
+   188→   188→      toast.error(e.message || 'Failed to save task')
+   189→   189→    } finally {
+   190→   190→      setSubmitting(false)
+   191→   191→    }
+   192→   192→  }
+   193→   193→
+   194→   194→  const handleDelete = async () => {
+   195→   195→    if (!deleteId) return
+   196→   196→    try {
+   197→   197→      await apiDelete(`/api/tasks/${deleteId}`)
+   198→   198→      toast.success('Task deleted')
+   199→   199→      setDeleteId(null)
+   200→   200→      await refetch()
+   201→   201→    } catch (e: any) {
+   202→   202→      toast.error(e.message || 'Failed to delete task')
+   203→   203→    }
+   204→   204→  }
+   205→   205→
+   206→   206→  const onAssigneeChange = (val: string) => {
+   207→   207→    const u = users.find((x) => x.id === val)
+   208→   208→    setForm((f) => ({ ...f, assignedToId: val, assignedToName: u?.name || '' }))
+   209→   209→  }
+   210→   210→
+   211→   211→  const clearFilters = () => {
+   212→   212→    setProjectFilter('all'); setStatusFilter('all'); setPriorityFilter('all'); setAssigneeFilter('all')
+   213→   213→  }
+   214→   214→
+   215→   215→  const hasFilters = projectFilter !== 'all' || statusFilter !== 'all' || priorityFilter !== 'all' || assigneeFilter !== 'all'
+   216→   216→
+   217→   217→  return (
+   218→   218→    <div className="space-y-6">
+   219→   219→      <PageHeader
+   220→   220→        title="Task Management"
+   221→   221→        description="Track and manage project tasks"
+   222→   222→        icon={<ListChecks className="h-5 w-5" />}
+   223→   223→        actions={
+   224→   224→          <Button onClick={openNew} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+   225→   225→            <Plus className="h-4 w-4 mr-2" /> New Task
+   226→   226→          </Button>
+   227→   227→        }
+   228→   228→      />
+   229→   229→
+   230→   230→      {/* Overdue banner */}
+   231→   231→      {overdueCount > 0 && (
+   232→   232→        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+   233→   233→          <div className="flex items-center gap-3 text-red-700">
+   234→   234→            <AlertTriangle className="h-5 w-5 shrink-0" />
+   235→   235→            <div>
+   236→   236→              <p className="text-sm font-semibold">{overdueCount} {overdueCount === 1 ? 'task is' : 'tasks are'} overdue</p>
+   237→   237→              <p className="text-xs text-red-600/80">Review and update the status to keep your project on track.</p>
+   238→   238→            </div>
+   239→   239→          </div>
+   240→   240→          <Button
+   241→   241→            size="sm"
+   242→   242→            variant="outline"
+   243→   243→            className="border-red-200 bg-white text-red-700 hover:bg-red-50"
+   244→   244→            onClick={() => setStatusFilter('Delayed')}
+   245→   245→          >
+   246→   246→            <Filter className="h-4 w-4 mr-1" /> Filter Delayed
+   247→   247→          </Button>
+   248→   248→        </div>
+   249→   249→      )}
+   250→   250→
+   251→   251→      {/* Filter bar */}
+   252→   252→      <Card className="border-border/60 shadow-sm">
+   253→   253→        <CardContent className="p-4">
+   254→   254→          <div className="flex flex-col gap-3">
+   255→   255→            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+   256→   256→              <div className="flex items-center gap-1.5 text-sm font-medium text-slate-600">
+   257→   257→                <Filter className="h-4 w-4" /> Filters
+   258→   258→              </div>
+   259→   259→              {hasFilters && (
+   260→   260→                <Button variant="ghost" size="sm" onClick={clearFilters} className="text-slate-500 hover:text-slate-700">
+   261→   261→                  <X className="h-3.5 w-3.5 mr-1" /> Clear
+   262→   262→                </Button>
+   263→   263→              )}
+   264→   264→              <div className="ml-auto inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1">
+   265→   265→                <button
+   266→   266→                  onClick={() => setView('board')}
+   267→   267→                  className={cn(
+   268→   268→                    'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition',
+   269→   269→                    view === 'board' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+   270→   270→                  )}
+   271→   271→                >
+   272→   272→                  <LayoutGrid className="h-3.5 w-3.5" /> Board
+   273→   273→                </button>
+   274→   274→                <button
+   275→   275→                  onClick={() => setView('list')}
+   276→   276→                  className={cn(
+   277→   277→                    'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition',
+   278→   278→                    view === 'list' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+   279→   279→                  )}
+   280→   280→                >
+   281→   281→                  <List className="h-3.5 w-3.5" /> List
+   282→   282→                </button>
+   283→   283→              </div>
+   284→   284→            </div>
+   285→   285→
+   286→   286→            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+   287→   287→              <Select value={projectFilter} onValueChange={setProjectFilter}>
+   288→   288→                <SelectTrigger className="w-full bg-white">
+   289→   289→                  <SelectValue placeholder="All Projects" />
+   290→   290→                </SelectTrigger>
+   291→   291→                <SelectContent>
+   292→   292→                  <SelectItem value="all">All Projects</SelectItem>
+   293→   293→                  {projects.map((p) => (
+   294→   294→                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+   295→   295→                  ))}
+   296→   296→                </SelectContent>
+   297→   297→              </Select>
+   298→   298→
+   299→   299→              <Select value={statusFilter} onValueChange={setStatusFilter}>
+   300→   300→                <SelectTrigger className="w-full bg-white">
+   301→   301→                  <SelectValue placeholder="All Statuses" />
+   302→   302→                </SelectTrigger>
+   303→   303→                <SelectContent>
+   304→   304→                  <SelectItem value="all">All Statuses</SelectItem>
+   305→   305→                  {TASK_STATUSES.map((s) => (
+   306→   306→                    <SelectItem key={s} value={s}>{TASK_STATUS_LABELS[s]}</SelectItem>
+   307→   307→                  ))}
+   308→   308→                </SelectContent>
+   309→   309→              </Select>
+   310→   310→
+   311→   311→              <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+   312→   312→                <SelectTrigger className="w-full bg-white">
+   313→   313→                  <SelectValue placeholder="All Priorities" />
+   314→   314→                </SelectTrigger>
+   315→   315→                <SelectContent>
+   316→   316→                  <SelectItem value="all">All Priorities</SelectItem>
+   317→   317→                  {TASK_PRIORITIES.map((p) => (
+   318→   318→                    <SelectItem key={p} value={p}>{p}</SelectItem>
+   319→   319→                  ))}
+   320→   320→                </SelectContent>
+   321→   321→              </Select>
+   322→   322→
+   323→   323→              <Select value={assigneeFilter} onValueChange={setAssigneeFilter}>
+   324→   324→                <SelectTrigger className="w-full bg-white">
+   325→   325→                  <SelectValue placeholder="All Assignees" />
+   326→   326→                </SelectTrigger>
+   327→   327→                <SelectContent>
+   328→   328→                  <SelectItem value="all">All Assignees</SelectItem>
+   329→   329→                  {users.map((u) => (
+   330→   330→                    <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+   331→   331→                  ))}
+   332→   332→                </SelectContent>
+   333→   333→              </Select>
+   334→   334→            </div>
+   335→   335→          </div>
+   336→   336→        </CardContent>
+   337→   337→      </Card>
+   338→   338→
+   339→   339→      {/* Loading skeleton */}
+   340→   340→      {loading ? (
+   341→   341→        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+   342→   342→          {Array.from({ length: 4 }).map((_, i) => (
+   343→   343→            <Card key={i} className="animate-pulse"><CardContent className="p-4 h-64" /></Card>
+   344→   344→          ))}
+   345→   345→        </div>
+   346→   346→      ) : view === 'board' ? (
+   347→   347→        <BoardView tasks={tasks} priorityFilter={priorityFilter} onEdit={openEdit} onDelete={setDeleteId} />
+   348→   348→      ) : (
+   349→   349→        <ListView tasks={tasks} priorityFilter={priorityFilter} onEdit={openEdit} onDelete={setDeleteId} />
+   350→   350→      )}
+   351→   351→
+   352→   352→      {/* New/Edit dialog */}
+   353→   353→      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+   354→   354→        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto ayk-scrollbar">
+   355→   355→          <DialogHeader>
+   356→   356→            <DialogTitle>{editing ? 'Edit Task' : 'New Task'}</DialogTitle>
+   357→   357→            <DialogDescription>
+   358→   358→              {editing ? 'Update the task details below.' : 'Fill in the details below to create a new task.'}
+   359→   359→            </DialogDescription>
+   360→   360→          </DialogHeader>
+   361→   361→
+   362→   362→          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   363→   363→            <div className="sm:col-span-2 space-y-1.5">
+   364→   364→              <Label htmlFor="t-title">Title <span className="text-red-500">*</span></Label>
+   365→   365→              <Input id="t-title" value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} placeholder="e.g. Install mounting rails" />
+   366→   366→            </div>
+   367→   367→
+   368→   368→            <div className="sm:col-span-2 space-y-1.5">
+   369→   369→              <Label htmlFor="t-desc">Description</Label>
+   370→   370→              <Textarea id="t-desc" rows={3} value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} placeholder="Brief description of the task" />
+   371→   371→            </div>
+   372→   372→
+   373→   373→            <div className="space-y-1.5">
+   374→   374→              <Label>Project</Label>
+   375→   375→              <Select value={form.projectId || 'none'} onValueChange={(v) => setForm((f) => ({ ...f, projectId: v === 'none' ? '' : v }))}>
+   376→   376→                <SelectTrigger className="w-full bg-white"><SelectValue placeholder="No project" /></SelectTrigger>
+   377→   377→                <SelectContent>
+   378→   378→                  <SelectItem value="none">No project</SelectItem>
+   379→   379→                  {projects.map((p) => (
+   380→   380→                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+   381→   381→                  ))}
+   382→   382→                </SelectContent>
+   383→   383→              </Select>
+   384→   384→            </div>
+   385→   385→
+   386→   386→            <div className="space-y-1.5">
+   387→   387→              <Label>Assigned To</Label>
+   388→   388→              <Select value={form.assignedToId || 'none'} onValueChange={onAssigneeChange}>
+   389→   389→                <SelectTrigger className="w-full bg-white"><SelectValue placeholder="Unassigned" /></SelectTrigger>
+   390→   390→                <SelectContent>
+   391→   391→                  <SelectItem value="none">Unassigned</SelectItem>
+   392→   392→                  {users.map((u) => (
+   393→   393→                    <SelectItem key={u.id} value={u.id}>{u.name} · {u.role}</SelectItem>
+   394→   394→                  ))}
+   395→   395→                </SelectContent>
+   396→   396→              </Select>
+   397→   397→            </div>
+   398→   398→
+   399→   399→            <div className="space-y-1.5">
+   400→   400→              <Label htmlFor="t-team">Team</Label>
+   401→   401→              <Input id="t-team" value={form.team} onChange={(e) => setForm((f) => ({ ...f, team: e.target.value }))} placeholder="e.g. Installation Team A" />
+   402→   402→            </div>
+   403→   403→
+   404→   404→            <div className="space-y-1.5">
+   405→   405→              <Label>Priority</Label>
+   406→   406→              <Select value={form.priority} onValueChange={(v) => setForm((f) => ({ ...f, priority: v }))}>
+   407→   407→                <SelectTrigger className="w-full bg-white"><SelectValue /></SelectTrigger>
+   408→   408→                <SelectContent>
+   409→   409→                  {TASK_PRIORITIES.map((p) => (
+   410→   410→                    <SelectItem key={p} value={p}>{p}</SelectItem>
+   411→   411→                  ))}
+   412→   412→                </SelectContent>
+   413→   413→              </Select>
+   414→   414→            </div>
+   415→   415→
+   416→   416→            <div className="space-y-1.5">
+   417→   417→              <Label>Status</Label>
+   418→   418→              <Select value={form.status} onValueChange={(v) => setForm((f) => ({ ...f, status: v }))}>
+   419→   419→                <SelectTrigger className="w-full bg-white"><SelectValue /></SelectTrigger>
+   420→   420→                <SelectContent>
+   421→   421→                  {TASK_STATUSES.map((s) => (
+   422→   422→                    <SelectItem key={s} value={s}>{TASK_STATUS_LABELS[s]}</SelectItem>
+   423→   423→                  ))}
+   424→   424→                </SelectContent>
+   425→   425→              </Select>
+   426→   426→            </div>
+   427→   427→
+   428→   428→            <div className="space-y-1.5">
+   429→   429→              <Label htmlFor="t-start">Start Date</Label>
+   430→   430→              <Input id="t-start" type="date" value={form.startDate} onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))} />
+   431→   431→            </div>
+   432→   432→
+   433→   433→            <div className="space-y-1.5">
+   434→   434→              <Label htmlFor="t-due">Due Date <span className="text-red-500">*</span></Label>
+   435→   435→              <Input id="t-due" type="date" value={form.dueDate} onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))} />
+   436→   436→            </div>
+   437→   437→
+   438→   438→            <div className="sm:col-span-2 space-y-2">
+   439→   439→              <div className="flex items-center justify-between">
+   440→   440→                <Label>Progress</Label>
+   441→   441→                <span className="text-sm font-semibold text-emerald-700">{form.progress}%</span>
+   442→   442→              </div>
+   443→   443→              <Slider
+   444→   444→                value={[form.progress]}
+   445→   445→                min={0}
+   446→   446→                max={100}
+   447→   447→                step={5}
+   448→   448→                onValueChange={(v) => setForm((f) => ({ ...f, progress: v[0] ?? 0 }))}
+   449→   449→              />
+   450→   450→            </div>
+   451→   451→
+   452→   452→            <div className="sm:col-span-2 space-y-1.5">
+   453→   453→              <Label htmlFor="t-remarks">Remarks</Label>
+   454→   454→              <Textarea id="t-remarks" rows={2} value={form.remarks} onChange={(e) => setForm((f) => ({ ...f, remarks: e.target.value }))} placeholder="Any additional notes" />
+   455→   455→            </div>
+   456→   456→          </div>
+   457→   457→
+   458→   458→          <DialogFooter>
+   459→   459→            <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
+   460→   460→            <Button disabled={submitting} onClick={handleSubmit} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+   461→   461→              {submitting ? 'Saving…' : editing ? 'Update Task' : 'Create Task'}
+   462→   462→            </Button>
+   463→   463→          </DialogFooter>
+   464→   464→        </DialogContent>
+   465→   465→      </Dialog>
+   466→   466→
+   467→   467→      {/* Delete confirm */}
+   468→   468→      <AlertDialog open={!!deleteId} onOpenChange={(o) => !o && setDeleteId(null)}>
+   469→   469→        <AlertDialogContent>
+   470→   470→          <AlertDialogHeader>
+   471→   471→            <AlertDialogTitle>Delete this task?</AlertDialogTitle>
+   472→   472→            <AlertDialogDescription>
+   473→   473→              This action cannot be undone. The task and its history will be permanently removed.
+   474→   474→            </AlertDialogDescription>
+   475→   475→          </AlertDialogHeader>
+   476→   476→          <AlertDialogFooter>
+   477→   477→            <AlertDialogCancel>Cancel</AlertDialogCancel>
+   478→   478→            <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700 text-white">
+   479→   479→              Delete
+   480→   480→            </AlertDialogAction>
+   481→   481→          </AlertDialogFooter>
+   482→   482→        </AlertDialogContent>
+   483→   483→      </AlertDialog>
+   484→   484→    </div>
+   485→   485→  )
+   486→   486→}
+   487→   487→
+   488→   488→/* ------------------------------ Board View ------------------------------ */
+   489→   489→
+   490→   490→function BoardView({
+   491→   491→  tasks, priorityFilter, onEdit, onDelete,
+   492→   492→}: {
+   493→   493→  tasks: TaskItem[]
+   494→   494→  priorityFilter: string
+   495→   495→  onEdit: (t: TaskItem) => void
+   496→   496→  onDelete: (id: string) => void
+   497→   497→}) {
+   498→   498→  const filtered = useMemo(() => {
+   499→   499→    if (priorityFilter === 'all') return tasks
+   500→   500→    return tasks.filter((t) => t.priority === priorityFilter)
+   501→   501→  }, [tasks, priorityFilter])
+   502→   502→
+   503→   503→  const grouped = useMemo(() => {
+   504→   504→    const g: Record<string, TaskItem[]> = { Todo: [], InProgress: [], Completed: [], Delayed: [] }
+   505→   505→    for (const t of filtered) {
+   506→   506→      const key = (t.status in g) ? t.status : 'Todo'
+   507→   507→      g[key].push(t)
+   508→   508→    }
+   509→   509→    return g
+   510→   510→  }, [filtered])
+   511→   511→
+   512→   512→  if (filtered.length === 0) {
+   513→   513→    return <EmptyState />
+   514→   514→  }
+   515→   515→
+   516→   516→  return (
+   517→   517→    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+   518→   518→      {COLUMN_DEFS.map((col) => (
+   519→   519→        <Card key={col.key} className="border-border/60 shadow-sm bg-slate-50/40">
+   520→   520→          <CardHeader className="pb-3 pt-4 px-4">
+   521→   521→            <div className="flex items-center justify-between">
+   522→   522→              <div className="flex items-center gap-2">
+   523→   523→                <span className={cn('h-2 w-2 rounded-full', col.dot)} />
+   524→   524→                <CardTitle className={cn('text-sm font-semibold', col.accent)}>{col.label}</CardTitle>
+   525→   525→              </div>
+   526→   526→              <Badge variant="secondary" className="bg-white text-slate-600 border border-slate-200">{grouped[col.key].length}</Badge>
+   527→   527→            </div>
+   528→   528→          </CardHeader>
+   529→   529→          <CardContent className="px-3 pb-3 space-y-2.5 max-h-[calc(100vh-22rem)] overflow-y-auto ayk-scrollbar">
+   530→   530→            {grouped[col.key].length === 0 ? (
+   531→   531→              <div className="text-center text-xs text-slate-400 py-8">No tasks</div>
+   532→   532→            ) : (
+   533→   533→              grouped[col.key].map((t) => (
+   534→   534→                <TaskCard key={t.id} task={t} onEdit={onEdit} onDelete={onDelete} />
+   535→   535→              ))
+   536→   536→            )}
+   537→   537→          </CardContent>
+   538→   538→        </Card>
+   539→   539→      ))}
+   540→   540→    </div>
+   541→   541→  )
+   542→   542→}
+   543→   543→
+   544→   544→function TaskCard({ task, onEdit, onDelete }: { task: TaskItem; onEdit: (t: TaskItem) => void; onDelete: (id: string) => void }) {
+   545→   545→  const projectName = task.project?.name || '—'
+   546→   546→  const assignee = task.assignedToName || task.assignedTo?.name || 'Unassigned'
+   547→   547→  return (
+   548→   548→    <div
+   549→   549→      onClick={() => onEdit(task)}
+   550→   550→      className="group rounded-lg border border-slate-200 bg-white p-3 shadow-sm hover:shadow-md hover:border-emerald-200 transition cursor-pointer"
+   551→   551→    >
+   552→   552→      <div className="flex items-start justify-between gap-2">
+   553→   553→        <div className="min-w-0 flex-1">
+   554→   554→          <div className="flex items-center gap-1.5">
+   555→   555→            {task.isOverdue && <span className="h-2 w-2 rounded-full bg-red-500 shrink-0" title="Overdue" />}
+   556→   556→            <h4 className="text-sm font-semibold text-slate-900 truncate group-hover:text-emerald-700 transition">{task.title}</h4>
+   557→   557→          </div>
+   558→   558→          <p className="text-xs text-slate-500 mt-0.5 truncate">{projectName}</p>
+   559→   559→        </div>
+   560→   560→        <span className={cn('h-2 w-2 rounded-full shrink-0 mt-1', PRIORITY_DOT[task.priority] || 'bg-slate-400')} title={`Priority: ${task.priority}`} />
+   561→   561→      </div>
+   562→   562→
+   563→   563→      <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+   564→   564→        <PriorityBadge priority={task.priority} />
+   565→   565→        <Badge variant="outline" className="text-[11px] text-slate-600 border-slate-200">
+   566→   566→          <span className={cn('h-1.5 w-1.5 rounded-full mr-1', PRIORITY_DOT[task.priority] || 'bg-slate-400')} />
+   567→   567→          {task.priority}
+   568→   568→        </Badge>
+   569→   569→      </div>
+   570→   570→
+   571→   571→      <div className="mt-2.5 space-y-2">
+   572→   572→        <div className="flex items-center justify-between text-xs text-slate-500">
+   573→   573→          <span className="flex items-center gap-1 truncate">
+   574→   574→            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-semibold">
+   575→   575→              {assignee.charAt(0).toUpperCase()}
+   576→   576→            </span>
+   577→   577→            <span className="truncate">{assignee}</span>
+   578→   578→          </span>
+   579→   579→          <span className={cn('shrink-0', task.isOverdue ? 'text-red-600 font-medium' : '')}>{formatDate(task.dueDate)}</span>
+   580→   580→        </div>
+   581→   581→        <div>
+   582→   582→          <div className="flex items-center justify-between text-[11px] text-slate-500 mb-1">
+   583→   583→            <span>Progress</span><span className="font-medium text-slate-700">{task.progress}%</span>
+   584→   584→          </div>
+   585→   585→          <Progress value={task.progress} className="h-1.5" />
+   586→   586→        </div>
+   587→   587→      </div>
+   588→   588→
+   589→   589→      <div className="mt-2 flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition">
+   590→   590→        <Button size="sm" variant="ghost" className="h-7 px-2 text-slate-500 hover:text-emerald-600" onClick={(e) => { e.stopPropagation(); onEdit(task) }}>
+   591→   591→          <Pencil className="h-3.5 w-3.5" />
+   592→   592→        </Button>
+   593→   593→        <Button size="sm" variant="ghost" className="h-7 px-2 text-slate-500 hover:text-red-600" onClick={(e) => { e.stopPropagation(); onDelete(task.id) }}>
+   594→   594→          <Trash2 className="h-3.5 w-3.5" />
+   595→   595→        </Button>
+   596→   596→      </div>
+   597→   597→    </div>
+   598→   598→  )
+   599→   599→}
+   600→   600→
+   601→   601→/* ------------------------------ List View ------------------------------ */
+   602→   602→
+   603→   603→function ListView({
+   604→   604→  tasks, priorityFilter, onEdit, onDelete,
+   605→   605→}: {
+   606→   606→  tasks: TaskItem[]
+   607→   607→  priorityFilter: string
+   608→   608→  onEdit: (t: TaskItem) => void
+   609→   609→  onDelete: (id: string) => void
+   610→   610→}) {
+   611→   611→  const filtered = useMemo(() => {
+   612→   612→    if (priorityFilter === 'all') return tasks
+   613→   613→    return tasks.filter((t) => t.priority === priorityFilter)
+   614→   614→  }, [tasks, priorityFilter])
+   615→   615→
+   616→   616→  if (filtered.length === 0) return <EmptyState />
+   617→   617→
+   618→   618→  return (
+   619→   619→    <Card className="border-border/60 shadow-sm">
+   620→   620→      <CardContent className="p-0">
+   621→   621→        <div className="max-h-[calc(100vh-18rem)] overflow-y-auto ayk-scrollbar">
+   622→   622→          <Table>
+   623→   623→            <TableHeader className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur">
+   624→   624→              <TableRow className="hover:bg-transparent">
+   625→   625→                <TableHead className="min-w-[200px]">Title</TableHead>
+   626→   626→                <TableHead className="min-w-[140px]">Project</TableHead>
+   627→   627→                <TableHead>Assigned To</TableHead>
+   628→   628→                <TableHead>Priority</TableHead>
+   629→   629→                <TableHead>Status</TableHead>
+   630→   630→                <TableHead className="min-w-[120px]">Progress</TableHead>
+   631→   631→                <TableHead>Due Date</TableHead>
+   632→   632→                <TableHead className="text-right">Actions</TableHead>
+   633→   633→              </TableRow>
+   634→   634→            </TableHeader>
+   635→   635→            <TableBody>
+   636→   636→              {filtered.map((t) => (
+   637→   637→                <TableRow key={t.id} className={cn(t.isOverdue && 'bg-red-50/60 hover:bg-red-50')}>
+   638→   638→                  <TableCell>
+   639→   639→                    <div className="flex items-center gap-2">
+   640→   640→                      {t.isOverdue && <span className="h-2 w-2 rounded-full bg-red-500 shrink-0" title="Overdue" />}
+   641→   641→                      <button onClick={() => onEdit(t)} className="text-left font-medium text-slate-900 hover:text-emerald-700 truncate">
+   642→   642→                        {t.title}
+   643→   643→                      </button>
+   644→   644→                    </div>
+   645→   645→                  </TableCell>
+   646→   646→                  <TableCell className="text-slate-600 text-xs">{t.project?.name || '—'}</TableCell>
+   647→   647→                  <TableCell className="text-slate-700 text-xs">
+   648→   648→                    {t.assignedToName || t.assignedTo?.name || 'Unassigned'}
+   649→   649→                  </TableCell>
+   650→   650→                  <TableCell><PriorityBadge priority={t.priority} /></TableCell>
+   651→   651→                  <TableCell><StatusBadge status={t.status} /></TableCell>
+   652→   652→                  <TableCell>
+   653→   653→                    <div className="flex items-center gap-2 min-w-[120px]">
+   654→   654→                      <Progress value={t.progress} className="h-1.5 flex-1" />
+   655→   655→                      <span className="text-xs font-medium text-slate-600 tabular-nums w-9 text-right">{t.progress}%</span>
+   656→   656→                    </div>
+   657→   657→                  </TableCell>
+   658→   658→                  <TableCell>
+   659→   659→                    <span className={cn('text-xs', t.isOverdue ? 'text-red-600 font-medium' : 'text-slate-600')}>
+   660→   660→                      {formatDate(t.dueDate)}
+   661→   661→                    </span>
+   662→   662→                  </TableCell>
+   663→   663→                  <TableCell className="text-right">
+   664→   664→                    <div className="flex items-center justify-end gap-1">
+   665→   665→                      <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-slate-500 hover:text-emerald-600" onClick={() => onEdit(t)}>
+   666→   666→                        <Pencil className="h-4 w-4" />
+   667→   667→                      </Button>
+   668→   668→                      <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-slate-500 hover:text-red-600" onClick={() => onDelete(t.id)}>
+   669→   669→                        <Trash2 className="h-4 w-4" />
+   670→   670→                      </Button>
+   671→   671→                    </div>
+   672→   672→                  </TableCell>
+   673→   673→                </TableRow>
+   674→   674→              ))}
+   675→   675→            </TableBody>
+   676→   676→          </Table>
+   677→   677→        </div>
+   678→   678→      </CardContent>
+   679→   679→    </Card>
+   680→   680→  )
+   681→   681→}
+   682→   682→
+   683→   683→/* ------------------------------ Empty State ------------------------------ */
+   684→   684→function EmptyState() {
+   685→   685→  return (
+   686→   686→    <Card className="border-dashed border-slate-300 bg-slate-50/50">
+   687→   687→      <CardContent className="py-16 flex flex-col items-center justify-center text-center">
+   688→   688→        <div className="h-12 w-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mb-3">
+   689→   689→          <Search className="h-6 w-6" />
+   690→   690→        </div>
+   691→   691→        <h3 className="text-base font-semibold text-slate-800">No tasks found</h3>
+   692→   692→        <p className="text-sm text-slate-500 mt-1 max-w-sm">
+   693→   693→          Try adjusting your filters, or click <span className="font-medium text-emerald-700">New Task</span> to create one.
+   694→   694→        </p>
+   695→   695→      </CardContent>
+   696→   696→    </Card>
+   697→   697→  )
+   698→   698→}
+   699→   699→

@@ -1,0 +1,783 @@
+     1→'use client'
+     2→import { useState, useMemo, useEffect } from 'react'
+     3→import { useAppStore } from '@/store/app-store'
+     4→import { useFetch, apiPost, apiPut } from '@/hooks/use-fetch'
+     5→import { PageHeader } from '@/components/shared/page-header'
+     6→import { StatCard } from '@/components/shared/stat-card'
+     7→import { StatusBadge } from '@/components/shared/status-badge'
+     8→import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+     9→import { Progress } from '@/components/ui/progress'
+    10→import { Button } from '@/components/ui/button'
+    11→import { Badge } from '@/components/ui/badge'
+    12→import { Input } from '@/components/ui/input'
+    13→import { Textarea } from '@/components/ui/textarea'
+    14→import { Label } from '@/components/ui/label'
+    15→import { Checkbox } from '@/components/ui/checkbox'
+    16→import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+    17→import {
+    18→  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+    19→} from '@/components/ui/select'
+    20→import {
+    21→  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
+    22→} from '@/components/ui/dialog'
+    23→import { ScrollArea } from '@/components/ui/scroll-area'
+    24→import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+    25→import {
+    26→  ShieldAlert, ShieldCheck, AlertCircle, TriangleAlert, HardHat, Plus, FileText, MapPin, Calendar, User as UserIcon, ClipboardList, TrendingUp,
+    27→} from 'lucide-react'
+    28→import {
+    29→  ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip,
+    30→} from 'recharts'
+    31→import {
+    32→  SAFETY_INCIDENT_LABELS, SAFETY_INCIDENT_TYPES, formatDate,
+    33→} from '@/lib/constants'
+    34→import { toast } from 'sonner'
+    35→import { cn } from '@/lib/utils'
+    36→
+    37→const PPE_ITEMS: { key: string; label: string }[] = [
+    38→  { key: 'helmet', label: 'Helmet' },
+    39→  { key: 'safetyShoes', label: 'Safety Shoes' },
+    40→  { key: 'gloves', label: 'Gloves' },
+    41→  { key: 'harness', label: 'Harness' },
+    42→  { key: 'workAreaClean', label: 'Work Area Clean' },
+    43→  { key: 'equipmentCondition', label: 'Equipment Condition' },
+    44→  { key: 'electricalSafety', label: 'Electrical Safety' },
+    45→]
+    46→
+    47→const CHECKLIST_TYPES = ['PPE', 'Toolbox', 'Inspection'] as const
+    48→const INCIDENT_TYPES_LIST = ['Incident', 'NearMiss', 'UnsafeCondition'] as const
+    49→const INCIDENT_SEVERITIES = ['Low', 'Medium', 'High', 'Critical'] as const
+    50→const INCIDENT_STATUSES = ['Open', 'Investigating', 'Closed'] as const
+    51→
+    52→const CHECKLIST_TYPE_BADGE: Record<string, string> = {
+    53→  PPE: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+    54→  Toolbox: 'bg-sky-100 text-sky-700 border-sky-200',
+    55→  Inspection: 'bg-violet-100 text-violet-700 border-violet-200',
+    56→}
+    57→
+    58→export function SafetyPage() {
+    59→  const { user } = useAppStore()
+    60→
+    61→  const [tab, setTab] = useState<'checklists' | 'incidents' | 'ppe'>('checklists')
+    62→
+    63→  // Filters
+    64→  const [projFilter, setProjFilter] = useState<string>('all')
+    65→  const [clTypeFilter, setClTypeFilter] = useState<string>('all')
+    66→  const [incTypeFilter, setIncTypeFilter] = useState<string>('all')
+    67→  const [incStatusFilter, setIncStatusFilter] = useState<string>('all')
+    68→
+    69→  // Dialogs
+    70→  const [clDialogOpen, setClDialogOpen] = useState(false)
+    71→  const [incDialogOpen, setIncDialogOpen] = useState(false)
+    72→  const [editIncident, setEditIncident] = useState<any | null>(null)
+    73→
+    74→  const { data: projData } = useFetch<any>('/api/projects')
+    75→  const projects = projData?.projects || []
+    76→
+    77→  const clUrl = `/api/safety/checklists?projectId=${projFilter}&checklistType=${clTypeFilter}`
+    78→  const incUrl = `/api/safety/incidents?projectId=${projFilter}&type=${incTypeFilter}&status=${incStatusFilter}`
+    79→  const { data: clData, loading: clLoading, refetch: refetchCl } = useFetch<any>(clUrl)
+    80→  const { data: incData, loading: incLoading, refetch: refetchInc } = useFetch<any>(incUrl)
+    81→
+    82→  const checklists: any[] = clData?.checklists || []
+    83→  const incidents: any[] = incData?.incidents || []
+    84→
+    85→  // ----- Stats -----
+    86→  const stats = useMemo(() => {
+    87→    const totalIncidents = incidents.length
+    88→    const openIncidents = incidents.filter(i => i.status === 'Open').length
+    89→    const closedIncidents = incidents.filter(i => i.status === 'Closed').length
+    90→    const nearMisses = incidents.filter(i => i.type === 'NearMiss').length
+    91→    const last30 = checklists.slice(0, 30)
+    92→    const ppeAvg = last30.length > 0
+    93→      ? Math.round(last30.reduce((s, c) => s + (c.compliancePct || 0), 0) / last30.length)
+    94→      : 0
+    95→    return { totalIncidents, openIncidents, closedIncidents, nearMisses, ppeAvg }
+    96→  }, [incidents, checklists])
+    97→
+    98→  // ----- PPE Compliance trend (last 14 days) -----
+    99→  const trendData = useMemo(() => {
+   100→    const byDay = new Map<string, { sum: number; count: number }>()
+   101→    for (const c of checklists) {
+   102→      const d = new Date(c.date)
+   103→      const key = d.toISOString().slice(0, 10)
+   104→      const cur = byDay.get(key) || { sum: 0, count: 0 }
+   105→      cur.sum += c.compliancePct || 0
+   106→      cur.count += 1
+   107→      byDay.set(key, cur)
+   108→    }
+   109→    // build last 14 days range
+   110→    const days: { date: string; label: string; compliance: number }[] = []
+   111→    const today = new Date()
+   112→    for (let i = 13; i >= 0; i--) {
+   113→      const d = new Date(today)
+   114→      d.setDate(today.getDate() - i)
+   115→      const key = d.toISOString().slice(0, 10)
+   116→      const entry = byDay.get(key)
+   117→      days.push({
+   118→        date: key,
+   119→        label: `${d.getDate()}/${d.getMonth() + 1}`,
+   120→        compliance: entry ? Math.round(entry.sum / entry.count) : 0,
+   121→      })
+   122→    }
+   123→    return days
+   124→  }, [checklists])
+   125→
+   126→  // ----- PPE per-item compliance -----
+   127→  const ppePerItem = useMemo(() => {
+   128→    const counts = PPE_ITEMS.map(item => {
+   129→      const total = checklists.length
+   130→      const checked = checklists.filter(c => c[item.key] === true).length
+   131→      const pct = total > 0 ? Math.round((checked / total) * 100) : 0
+   132→      return { ...item, pct, checked, total }
+   133→    })
+   134→    return counts
+   135→  }, [checklists])
+   136→
+   137→  return (
+   138→    <div className="space-y-6">
+   139→      <PageHeader
+   140→        title="Safety Management"
+   141→        description="Safety checklists, incidents and compliance"
+   142→        icon={<ShieldAlert className="h-5 w-5" />}
+   143→        actions={
+   144→          <>
+   145→            <Button onClick={() => setClDialogOpen(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+   146→              <Plus className="h-4 w-4 mr-2" /> New Checklist
+   147→            </Button>
+   148→            <Button onClick={() => setIncDialogOpen(true)} variant="outline" className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700">
+   149→              <AlertCircle className="h-4 w-4 mr-2" /> Report Incident
+   150→            </Button>
+   151→          </>
+   152→        }
+   153→      />
+   154→
+   155→      {/* Stat cards */}
+   156→      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
+   157→        <StatCard title="Total Incidents" value={stats.totalIncidents} subtitle="All time" icon={<ShieldAlert className="h-5 w-5" />} accent="red" />
+   158→        <StatCard title="Open Incidents" value={stats.openIncidents} subtitle="Need attention" icon={<AlertCircle className="h-5 w-5" />} accent="orange" />
+   159→        <StatCard title="Closed Incidents" value={stats.closedIncidents} subtitle="Resolved" icon={<ShieldCheck className="h-5 w-5" />} accent="green" />
+   160→        <StatCard title="Near Misses" value={stats.nearMisses} subtitle="Reported" icon={<TriangleAlert className="h-5 w-5" />} accent="blue" />
+   161→        <StatCard title="PPE Compliance" value={`${stats.ppeAvg}%`} subtitle="Avg last 30 checklists" icon={<ShieldCheck className="h-5 w-5" />} accent="green" />
+   162→      </div>
+   163→
+   164→      {/* PPE Compliance Trend Chart */}
+   165→      <Card>
+   166→        <CardHeader className="pb-2">
+   167→          <CardTitle className="text-base font-semibold flex items-center gap-2">
+   168→            <TrendingUp className="h-4 w-4 text-emerald-600" />
+   169→            PPE Compliance Trend — Last 14 Days
+   170→          </CardTitle>
+   171→          <CardDescription className="text-xs">Daily average compliance score from checklists</CardDescription>
+   172→        </CardHeader>
+   173→        <CardContent>
+   174→          <ResponsiveContainer width="100%" height={260}>
+   175→            <LineChart data={trendData} margin={{ top: 8, right: 12, left: -10, bottom: 0 }}>
+   176→              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+   177→              <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#64748b' }} />
+   178→              <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: '#64748b' }} unit="%" />
+   179→              <RTooltip
+   180→                contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}
+   181→                formatter={(v: any) => [`${v}%`, 'Compliance']}
+   182→                labelFormatter={(l) => `Date ${l}`}
+   183→              />
+   184→              <Line type="monotone" dataKey="compliance" stroke="#10b981" strokeWidth={2.5} dot={{ r: 4, fill: '#10b981' }} name="Compliance" />
+   185→            </LineChart>
+   186→          </ResponsiveContainer>
+   187→        </CardContent>
+   188→      </Card>
+   189→
+   190→      <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>
+   191→        <TabsList className="grid w-full max-w-md grid-cols-3">
+   192→          <TabsTrigger value="checklists">Checklists</TabsTrigger>
+   193→          <TabsTrigger value="incidents">Incidents</TabsTrigger>
+   194→          <TabsTrigger value="ppe">PPE Compliance</TabsTrigger>
+   195→        </TabsList>
+   196→
+   197→        {/* ============== CHECKLISTS TAB ============== */}
+   198→        <TabsContent value="checklists" className="space-y-4">
+   199→          <Card>
+   200→            <CardContent className="p-4">
+   201→              <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
+   202→                <div className="flex-1 space-y-1.5">
+   203→                  <Label className="text-xs">Project</Label>
+   204→                  <Select value={projFilter} onValueChange={setProjFilter}>
+   205→                    <SelectTrigger className="w-full"><SelectValue placeholder="All projects" /></SelectTrigger>
+   206→                    <SelectContent>
+   207→                      <SelectItem value="all">All Projects</SelectItem>
+   208→                      {projects.map((p: any) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+   209→                    </SelectContent>
+   210→                  </Select>
+   211→                </div>
+   212→                <div className="flex-1 space-y-1.5">
+   213→                  <Label className="text-xs">Checklist Type</Label>
+   214→                  <Select value={clTypeFilter} onValueChange={setClTypeFilter}>
+   215→                    <SelectTrigger className="w-full"><SelectValue placeholder="All types" /></SelectTrigger>
+   216→                    <SelectContent>
+   217→                      <SelectItem value="all">All Types</SelectItem>
+   218→                      {CHECKLIST_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+   219→                    </SelectContent>
+   220→                  </Select>
+   221→                </div>
+   222→                <Button onClick={() => setClDialogOpen(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+   223→                  <Plus className="h-4 w-4 mr-2" /> New Checklist
+   224→                </Button>
+   225→              </div>
+   226→            </CardContent>
+   227→          </Card>
+   228→
+   229→          <Card>
+   230→            <CardHeader className="pb-3">
+   231→              <CardTitle className="text-base font-semibold flex items-center gap-2">
+   232→                <ClipboardList className="h-4 w-4 text-emerald-600" /> Safety Checklists
+   233→              </CardTitle>
+   234→              <CardDescription className="text-xs">{checklists.length} checklist(s) found</CardDescription>
+   235→            </CardHeader>
+   236→            <CardContent className="p-0">
+   237→              {clLoading ? (
+   238→                <div className="p-4 space-y-3">
+   239→                  {Array.from({ length: 5 }).map((_, i) => (
+   240→                    <div key={i} className="h-10 rounded bg-slate-100 animate-pulse" />
+   241→                  ))}
+   242→                </div>
+   243→              ) : checklists.length === 0 ? (
+   244→                <div className="p-8 text-center text-sm text-muted-foreground">
+   245→                  <ShieldCheck className="h-10 w-10 mx-auto mb-2 text-slate-300" />
+   246→                  No checklists found. Create one to get started.
+   247→                </div>
+   248→              ) : (
+   249→                <ScrollArea className="h-[28rem]">
+   250→                  <Table>
+   251→                    <TableHeader>
+   252→                      <TableRow>
+   253→                        <TableHead>Date</TableHead>
+   254→                        <TableHead>Project</TableHead>
+   255→                        <TableHead>Type</TableHead>
+   256→                        <TableHead>Compliance</TableHead>
+   257→                        <TableHead>Conducted By</TableHead>
+   258→                        <TableHead>Location</TableHead>
+   259→                        <TableHead>Remarks</TableHead>
+   260→                      </TableRow>
+   261→                    </TableHeader>
+   262→                    <TableBody>
+   263→                      {checklists.map((c: any) => (
+   264→                        <TableRow key={c.id}>
+   265→                          <TableCell className="whitespace-nowrap text-sm">{formatDate(c.date)}</TableCell>
+   266→                          <TableCell className="text-sm max-w-[160px] truncate">{c.project?.name || '—'}</TableCell>
+   267→                          <TableCell>
+   268→                            <Badge variant="outline" className={cn('font-medium', CHECKLIST_TYPE_BADGE[c.checklistType] || 'bg-slate-100 text-slate-700 border-slate-200')}>
+   269→                              {c.checklistType}
+   270→                            </Badge>
+   271→                          </TableCell>
+   272→                          <TableCell className="w-40">
+   273→                            <div className="flex items-center gap-2">
+   274→                              <Progress value={c.compliancePct || 0} className="h-1.5 flex-1" />
+   275→                              <span className="text-xs font-semibold tabular-nums w-9 text-right">{c.compliancePct || 0}%</span>
+   276→                            </div>
+   277→                          </TableCell>
+   278→                          <TableCell className="text-sm">{c.conductedByName || '—'}</TableCell>
+   279→                          <TableCell className="text-sm max-w-[140px] truncate">{c.location || '—'}</TableCell>
+   280→                          <TableCell className="text-sm max-w-[200px] truncate text-muted-foreground">{c.remarks || '—'}</TableCell>
+   281→                        </TableRow>
+   282→                      ))}
+   283→                    </TableBody>
+   284→                  </Table>
+   285→                </ScrollArea>
+   286→              )}
+   287→            </CardContent>
+   288→          </Card>
+   289→        </TabsContent>
+   290→
+   291→        {/* ============== INCIDENTS TAB ============== */}
+   292→        <TabsContent value="incidents" className="space-y-4">
+   293→          <Card>
+   294→            <CardContent className="p-4">
+   295→              <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
+   296→                <div className="flex-1 space-y-1.5">
+   297→                  <Label className="text-xs">Project</Label>
+   298→                  <Select value={projFilter} onValueChange={setProjFilter}>
+   299→                    <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+   300→                    <SelectContent>
+   301→                      <SelectItem value="all">All Projects</SelectItem>
+   302→                      {projects.map((p: any) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+   303→                    </SelectContent>
+   304→                  </Select>
+   305→                </div>
+   306→                <div className="flex-1 space-y-1.5">
+   307→                  <Label className="text-xs">Type</Label>
+   308→                  <Select value={incTypeFilter} onValueChange={setIncTypeFilter}>
+   309→                    <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+   310→                    <SelectContent>
+   311→                      <SelectItem value="all">All Types</SelectItem>
+   312→                      {INCIDENT_TYPES_LIST.map(t => <SelectItem key={t} value={t}>{SAFETY_INCIDENT_LABELS[t]}</SelectItem>)}
+   313→                    </SelectContent>
+   314→                  </Select>
+   315→                </div>
+   316→                <div className="flex-1 space-y-1.5">
+   317→                  <Label className="text-xs">Status</Label>
+   318→                  <Select value={incStatusFilter} onValueChange={setIncStatusFilter}>
+   319→                    <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+   320→                    <SelectContent>
+   321→                      <SelectItem value="all">All Statuses</SelectItem>
+   322→                      {INCIDENT_STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+   323→                    </SelectContent>
+   324→                  </Select>
+   325→                </div>
+   326→                <Button onClick={() => setIncDialogOpen(true)} variant="outline" className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700">
+   327→                  <AlertCircle className="h-4 w-4 mr-2" /> Report Incident
+   328→                </Button>
+   329→              </div>
+   330→            </CardContent>
+   331→          </Card>
+   332→
+   333→          {incLoading ? (
+   334→            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+   335→              {Array.from({ length: 6 }).map((_, i) => (
+   336→                <Card key={i} className="animate-pulse"><CardContent className="p-5 h-44" /></Card>
+   337→              ))}
+   338→            </div>
+   339→          ) : incidents.length === 0 ? (
+   340→            <Card>
+   341→              <CardContent className="p-8 text-center text-sm text-muted-foreground">
+   342→                <ShieldCheck className="h-10 w-10 mx-auto mb-2 text-slate-300" />
+   343→                No incidents reported. Stay safe out there!
+   344→              </CardContent>
+   345→            </Card>
+   346→          ) : (
+   347→            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+   348→              {incidents.map((inc: any) => (
+   349→                <IncidentCard key={inc.id} incident={inc} onEdit={() => setEditIncident(inc)} />
+   350→              ))}
+   351→            </div>
+   352→          )}
+   353→        </TabsContent>
+   354→
+   355→        {/* ============== PPE COMPLIANCE TAB ============== */}
+   356→        <TabsContent value="ppe" className="space-y-4">
+   357→          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+   358→            <Card className="lg:col-span-1 bg-emerald-50/40 border-emerald-200">
+   359→              <CardHeader className="pb-3">
+   360→                <CardTitle className="text-base font-semibold flex items-center gap-2 text-emerald-700">
+   361→                  <ShieldCheck className="h-4 w-4" /> Overall Compliance
+   362→                </CardTitle>
+   363→                <CardDescription className="text-xs">Average across all checklists</CardDescription>
+   364→              </CardHeader>
+   365→              <CardContent>
+   366→                <div className="flex items-baseline gap-2">
+   367→                  <span className="text-4xl font-bold text-emerald-700 tabular-nums">{stats.ppeAvg}%</span>
+   368→                  <span className="text-sm text-emerald-600">/ 100%</span>
+   369→                </div>
+   370→                <Progress value={stats.ppeAvg} className="h-2.5 mt-3" />
+   371→                <p className="text-xs text-muted-foreground mt-3">
+   372→                  Based on {checklists.length} checklist{checklists.length === 1 ? '' : 's'} submitted.
+   373→                </p>
+   374→              </CardContent>
+   375→            </Card>
+   376→
+   377→            <Card className="lg:col-span-2">
+   378→              <CardHeader className="pb-3">
+   379→                <CardTitle className="text-base font-semibold flex items-center gap-2">
+   380→                  <ClipboardList className="h-4 w-4 text-emerald-600" /> PPE Item Compliance
+   381→                </CardTitle>
+   382→                <CardDescription className="text-xs">Percentage of checklists where each item was checked</CardDescription>
+   383→              </CardHeader>
+   384→              <CardContent className="space-y-3">
+   385→                {ppePerItem.map(item => (
+   386→                  <div key={item.key} className="space-y-1">
+   387→                    <div className="flex items-center justify-between text-sm">
+   388→                      <span className="font-medium text-slate-700">{item.label}</span>
+   389→                      <span className="tabular-nums font-semibold text-slate-900">{item.pct}%</span>
+   390→                    </div>
+   391→                    <Progress
+   392→                      value={item.pct}
+   393→                      className={cn('h-2', item.pct >= 90 ? '[&_>div]:bg-emerald-500' : item.pct >= 70 ? '[&_>div]:bg-amber-500' : '[&_>div]:bg-red-500')}
+   394→                    />
+   395→                    <p className="text-[11px] text-muted-foreground">{item.checked} of {item.total} checklists passed</p>
+   396→                  </div>
+   397→                ))}
+   398→                {checklists.length === 0 && (
+   399→                  <p className="text-sm text-muted-foreground text-center py-4">No checklists to analyze.</p>
+   400→                )}
+   401→              </CardContent>
+   402→            </Card>
+   403→          </div>
+   404→        </TabsContent>
+   405→      </Tabs>
+   406→
+   407→      {/* ============== NEW CHECKLIST DIALOG ============== */}
+   408→      <NewChecklistDialog
+   409→        open={clDialogOpen}
+   410→        onOpenChange={setClDialogOpen}
+   411→        projects={projects}
+   412→        onSubmit={async (payload) => {
+   413→          try {
+   414→            await apiPost('/api/safety/checklists', payload)
+   415→            toast.success('Checklist submitted')
+   416→            setClDialogOpen(false)
+   417→            refetchCl()
+   418→          } catch (e: any) {
+   419→            toast.error(e.message || 'Failed to submit checklist')
+   420→          }
+   421→        }}
+   422→      />
+   423→
+   424→      {/* ============== NEW INCIDENT DIALOG ============== */}
+   425→      <IncidentDialog
+   426→        open={incDialogOpen}
+   427→        onOpenChange={setIncDialogOpen}
+   428→        projects={projects}
+   429→        title="Report Incident"
+   430→        onSubmit={async (payload) => {
+   431→          try {
+   432→            await apiPost('/api/safety/incidents', payload)
+   433→            toast.success('Incident reported')
+   434→            setIncDialogOpen(false)
+   435→            refetchInc()
+   436→          } catch (e: any) {
+   437→            toast.error(e.message || 'Failed to report incident')
+   438→          }
+   439→        }}
+   440→      />
+   441→
+   442→      {/* ============== EDIT INCIDENT DIALOG ============== */}
+   443→      <IncidentDialog
+   444→        open={!!editIncident}
+   445→        onOpenChange={(o) => { if (!o) setEditIncident(null) }}
+   446→        projects={projects}
+   447→        title="Edit Incident"
+   448→        incident={editIncident}
+   449→        onSubmit={async (payload) => {
+   450→          if (!editIncident) return
+   451→          try {
+   452→            await apiPut(`/api/safety/incidents/${editIncident.id}`, payload)
+   453→            toast.success('Incident updated')
+   454→            setEditIncident(null)
+   455→            refetchInc()
+   456→          } catch (e: any) {
+   457→            toast.error(e.message || 'Failed to update incident')
+   458→          }
+   459→        }}
+   460→      />
+   461→    </div>
+   462→  )
+   463→}
+   464→
+   465→/* ----------------------------------------------------------------- */
+   466→/* Sub-components                                                     */
+   467→/* ----------------------------------------------------------------- */
+   468→
+   469→function IncidentCard({ incident, onEdit }: { incident: any; onEdit: () => void }) {
+   470→  const Icon = incident.type === 'Incident' ? AlertCircle : incident.type === 'NearMiss' ? TriangleAlert : HardHat
+   471→  const iconColor = incident.type === 'Incident' ? 'text-red-600 bg-red-50' : incident.type === 'NearMiss' ? 'text-amber-600 bg-amber-50' : 'text-sky-600 bg-sky-50'
+   472→  const label = SAFETY_INCIDENT_LABELS[incident.type] || incident.type
+   473→  return (
+   474→    <Card className="overflow-hidden hover:shadow-md transition-shadow border-border/60 flex flex-col">
+   475→      <CardContent className="p-5 flex-1 flex flex-col gap-3">
+   476→        <div className="flex items-start justify-between gap-2">
+   477→          <div className="flex items-center gap-2 min-w-0">
+   478→            <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', iconColor)}>
+   479→              <Icon className="h-5 w-5" />
+   480→            </div>
+   481→            <div className="min-w-0">
+   482→              <div className="text-sm font-semibold text-slate-900">{label}</div>
+   483→              <div className="text-xs text-muted-foreground flex items-center gap-1">
+   484→                <Calendar className="h-3 w-3" /> {formatDate(incident.date)}
+   485→              </div>
+   486→            </div>
+   487→          </div>
+   488→          <StatusBadge status={incident.severity} />
+   489→        </div>
+   490→
+   491→        <div className="text-xs text-muted-foreground flex items-center gap-1">
+   492→          <MapPin className="h-3 w-3" /> {incident.project?.name || 'No project'} {incident.location ? `· ${incident.location}` : ''}
+   493→        </div>
+   494→
+   495→        <p className="text-sm text-slate-700 line-clamp-3">{incident.description}</p>
+   496→
+   497→        {incident.actionTaken && (
+   498→          <div className="rounded-md bg-emerald-50 border border-emerald-100 px-3 py-2">
+   499→            <div className="text-[11px] uppercase tracking-wide font-semibold text-emerald-700">Action Taken</div>
+   500→            <p className="text-xs text-emerald-800 mt-0.5 line-clamp-2">{incident.actionTaken}</p>
+   501→          </div>
+   502→        )}
+   503→
+   504→        <div className="text-xs text-muted-foreground flex items-center gap-1">
+   505→          <UserIcon className="h-3 w-3" /> Reported by {incident.reportedByName || 'Unknown'}
+   506→        </div>
+   507→
+   508→        <div className="flex items-center justify-between pt-2 mt-auto border-t border-slate-100">
+   509→          <StatusBadge status={incident.status} />
+   510→          <Button size="sm" variant="outline" onClick={onEdit} className="h-7 text-xs">
+   511→            <FileText className="h-3 w-3 mr-1" /> Edit
+   512→          </Button>
+   513→        </div>
+   514→      </CardContent>
+   515→    </Card>
+   516→  )
+   517→}
+   518→
+   519→function NewChecklistDialog({
+   520→  open, onOpenChange, projects, onSubmit,
+   521→}: {
+   522→  open: boolean
+   523→  onOpenChange: (o: boolean) => void
+   524→  projects: any[]
+   525→  onSubmit: (payload: any) => Promise<void>
+   526→}) {
+   527→  const today = new Date().toISOString().slice(0, 10)
+   528→  const [date, setDate] = useState(today)
+   529→  const [projectId, setProjectId] = useState<string>('')
+   530→  const [checklistType, setChecklistType] = useState<string>('PPE')
+   531→  const [location, setLocation] = useState('')
+   532→  const [remarks, setRemarks] = useState('')
+   533→  const [checks, setChecks] = useState<Record<string, boolean>>({
+   534→    helmet: false, safetyShoes: false, gloves: false, harness: false,
+   535→    workAreaClean: false, equipmentCondition: false, electricalSafety: false,
+   536→  })
+   537→  const [saving, setSaving] = useState(false)
+   538→
+   539→  const passedChecks = Object.values(checks).filter(Boolean).length
+   540→  const compliancePct = Math.round((passedChecks / 7) * 100)
+   541→
+   542→  const reset = () => {
+   543→    setDate(today)
+   544→    setProjectId('')
+   545→    setChecklistType('PPE')
+   546→    setLocation('')
+   547→    setRemarks('')
+   548→    setChecks({
+   549→      helmet: false, safetyShoes: false, gloves: false, harness: false,
+   550→      workAreaClean: false, equipmentCondition: false, electricalSafety: false,
+   551→    })
+   552→  }
+   553→
+   554→  const handleSubmit = async () => {
+   555→    if (!projectId) {
+   556→      toast.error('Please select a project')
+   557→      return
+   558→    }
+   559→    setSaving(true)
+   560→    try {
+   561→      await onSubmit({
+   562→        date, projectId, checklistType,
+   563→        ...checks,
+   564→        location, remarks,
+   565→      })
+   566→      reset()
+   567→    } finally {
+   568→      setSaving(false)
+   569→    }
+   570→  }
+   571→
+   572→  return (
+   573→    <Dialog open={open} onOpenChange={onOpenChange}>
+   574→      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto ayk-scrollbar">
+   575→        <DialogHeader>
+   576→          <DialogTitle>New Safety Checklist</DialogTitle>
+   577→          <DialogDescription>Conduct a PPE / Toolbox / Inspection checklist and record compliance.</DialogDescription>
+   578→        </DialogHeader>
+   579→
+   580→        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   581→          <div className="space-y-1.5">
+   582→            <Label className="text-xs">Date</Label>
+   583→            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+   584→          </div>
+   585→          <div className="space-y-1.5">
+   586→            <Label className="text-xs">Project</Label>
+   587→            <Select value={projectId} onValueChange={setProjectId}>
+   588→              <SelectTrigger className="w-full"><SelectValue placeholder="Select project" /></SelectTrigger>
+   589→              <SelectContent>
+   590→                {projects.map((p: any) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+   591→              </SelectContent>
+   592→            </Select>
+   593→          </div>
+   594→          <div className="space-y-1.5">
+   595→            <Label className="text-xs">Checklist Type</Label>
+   596→            <Select value={checklistType} onValueChange={setChecklistType}>
+   597→              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+   598→              <SelectContent>
+   599→                {CHECKLIST_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+   600→              </SelectContent>
+   601→            </Select>
+   602→          </div>
+   603→          <div className="space-y-1.5">
+   604→            <Label className="text-xs">Location</Label>
+   605→            <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Site / area" />
+   606→          </div>
+   607→        </div>
+   608→
+   609→        <div className="space-y-3">
+   610→          <div className="flex items-center justify-between">
+   611→            <Label className="text-sm font-medium">PPE / Safety Checks</Label>
+   612→            <Badge className={cn(
+   613→              'font-medium border',
+   614→              compliancePct >= 85 ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
+   615→                : compliancePct >= 50 ? 'bg-amber-100 text-amber-700 border-amber-200'
+   616→                : 'bg-red-100 text-red-700 border-red-200'
+   617→            )}>
+   618→              {compliancePct}% ({passedChecks}/7)
+   619→            </Badge>
+   620→          </div>
+   621→          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+   622→            {PPE_ITEMS.map(item => (
+   623→              <div key={item.key} className="flex items-center space-x-2 rounded-md border border-slate-200 px-3 py-2.5 hover:bg-slate-50 transition">
+   624→                <Checkbox
+   625→                  id={`chk-${item.key}`}
+   626→                  checked={checks[item.key]}
+   627→                  onCheckedChange={(v) => setChecks(prev => ({ ...prev, [item.key]: !!v }))}
+   628→                />
+   629→                <Label htmlFor={`chk-${item.key}`} className="text-sm cursor-pointer flex-1">{item.label}</Label>
+   630→              </div>
+   631→            ))}
+   632→          </div>
+   633→        </div>
+   634→
+   635→        <div className="space-y-1.5">
+   636→          <Label className="text-xs">Remarks</Label>
+   637→          <Textarea rows={3} value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Additional observations…" />
+   638→        </div>
+   639→
+   640→        <DialogFooter>
+   641→          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+   642→          <Button onClick={handleSubmit} disabled={saving} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+   643→            {saving ? 'Submitting…' : 'Submit Checklist'}
+   644→          </Button>
+   645→        </DialogFooter>
+   646→      </DialogContent>
+   647→    </Dialog>
+   648→  )
+   649→}
+   650→
+   651→function IncidentDialog({
+   652→  open, onOpenChange, projects, title, incident, onSubmit,
+   653→}: {
+   654→  open: boolean
+   655→  onOpenChange: (o: boolean) => void
+   656→  projects: any[]
+   657→  title: string
+   658→  incident?: any | null
+   659→  onSubmit: (payload: any) => Promise<void>
+   660→}) {
+   661→  const today = new Date().toISOString().slice(0, 10)
+   662→  const [date, setDate] = useState(today)
+   663→  const [projectId, setProjectId] = useState<string>('')
+   664→  const [type, setType] = useState<string>('Incident')
+   665→  const [severity, setSeverity] = useState<string>('Medium')
+   666→  const [description, setDescription] = useState('')
+   667→  const [location, setLocation] = useState('')
+   668→  const [status, setStatus] = useState<string>('Open')
+   669→  const [actionTaken, setActionTaken] = useState('')
+   670→  const [saving, setSaving] = useState(false)
+   671→
+   672→  // Sync fields when editing existing incident
+   673→  useEffect(() => {
+   674→    if (incident) {
+   675→      setDate(incident.date ? new Date(incident.date).toISOString().slice(0, 10) : today)
+   676→      setProjectId(incident.projectId || '')
+   677→      setType(incident.type || 'Incident')
+   678→      setSeverity(incident.severity || 'Medium')
+   679→      setDescription(incident.description || '')
+   680→      setLocation(incident.location || '')
+   681→      setStatus(incident.status || 'Open')
+   682→      setActionTaken(incident.actionTaken || '')
+   683→    }
+   684→  }, [incident])
+   685→
+   686→  const handleSubmit = async () => {
+   687→    if (!description) {
+   688→      toast.error('Description is required')
+   689→      return
+   690→    }
+   691→    setSaving(true)
+   692→    try {
+   693→      await onSubmit({
+   694→        date, projectId, type, severity, description, location, status, actionTaken,
+   695→      })
+   696→      // reset
+   697→      setDescription('')
+   698→      setLocation('')
+   699→      setActionTaken('')
+   700→      setProjectId('')
+   701→      setType('Incident')
+   702→      setSeverity('Medium')
+   703→      setStatus('Open')
+   704→      setDate(today)
+   705→    } finally {
+   706→      setSaving(false)
+   707→    }
+   708→  }
+   709→
+   710→  return (
+   711→    <Dialog open={open} onOpenChange={onOpenChange}>
+   712→      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto ayk-scrollbar">
+   713→        <DialogHeader>
+   714→          <DialogTitle>{title}</DialogTitle>
+   715→          <DialogDescription>Record a safety incident, near-miss or unsafe condition.</DialogDescription>
+   716→        </DialogHeader>
+   717→
+   718→        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   719→          <div className="space-y-1.5">
+   720→            <Label className="text-xs">Date</Label>
+   721→            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+   722→          </div>
+   723→          <div className="space-y-1.5">
+   724→            <Label className="text-xs">Project</Label>
+   725→            <Select value={projectId} onValueChange={setProjectId}>
+   726→              <SelectTrigger className="w-full"><SelectValue placeholder="Select project (optional)" /></SelectTrigger>
+   727→              <SelectContent>
+   728→                {projects.map((p: any) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+   729→              </SelectContent>
+   730→            </Select>
+   731→          </div>
+   732→          <div className="space-y-1.5">
+   733→            <Label className="text-xs">Type</Label>
+   734→            <Select value={type} onValueChange={setType}>
+   735→              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+   736→              <SelectContent>
+   737→                {INCIDENT_TYPES_LIST.map(t => <SelectItem key={t} value={t}>{SAFETY_INCIDENT_LABELS[t]}</SelectItem>)}
+   738→              </SelectContent>
+   739→            </Select>
+   740→          </div>
+   741→          <div className="space-y-1.5">
+   742→            <Label className="text-xs">Severity</Label>
+   743→            <Select value={severity} onValueChange={setSeverity}>
+   744→              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+   745→              <SelectContent>
+   746→                {INCIDENT_SEVERITIES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+   747→              </SelectContent>
+   748→            </Select>
+   749→          </div>
+   750→          <div className="space-y-1.5 sm:col-span-2">
+   751→            <Label className="text-xs">Description</Label>
+   752→            <Textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What happened?" />
+   753→          </div>
+   754→          <div className="space-y-1.5">
+   755→            <Label className="text-xs">Location</Label>
+   756→            <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Site / area" />
+   757→          </div>
+   758→          <div className="space-y-1.5">
+   759→            <Label className="text-xs">Status</Label>
+   760→            <Select value={status} onValueChange={setStatus}>
+   761→              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+   762→              <SelectContent>
+   763→                {INCIDENT_STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+   764→              </SelectContent>
+   765→            </Select>
+   766→          </div>
+   767→          <div className="space-y-1.5 sm:col-span-2">
+   768→            <Label className="text-xs">Action Taken</Label>
+   769→            <Textarea rows={2} value={actionTaken} onChange={(e) => setActionTaken(e.target.value)} placeholder="Corrective / preventive action" />
+   770→          </div>
+   771→        </div>
+   772→
+   773→        <DialogFooter>
+   774→          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+   775→          <Button onClick={handleSubmit} disabled={saving} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+   776→            {saving ? 'Saving…' : title === 'Edit Incident' ? 'Update Incident' : 'Report Incident'}
+   777→          </Button>
+   778→        </DialogFooter>
+   779→      </DialogContent>
+   780→    </Dialog>
+   781→  )
+   782→}
+   783→

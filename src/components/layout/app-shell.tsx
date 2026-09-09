@@ -8,7 +8,6 @@ import { canAccess, type NavKey, ROLES, type RoleKey } from '@/lib/constants'
 import { LoginGate } from '@/components/login/login-gate'
 
 // Lazy-load ALL pages so only the active page compiles at a time.
-// This drastically reduces the initial compilation memory spike in the dev server.
 const DashboardPage = lazy(() => import('@/components/pages/dashboard-page').then(m => ({ default: m.DashboardPage })))
 const ProjectsPage = lazy(() => import('@/components/pages/projects-page').then(m => ({ default: m.ProjectsPage })))
 const ProgressPage = lazy(() => import('@/components/pages/progress-page').then(m => ({ default: m.ProgressPage })))
@@ -22,6 +21,7 @@ const ReportsPage = lazy(() => import('@/components/pages/reports-page').then(m 
 const SettingsPage = lazy(() => import('@/components/pages/settings-page').then(m => ({ default: m.SettingsPage })))
 const MobilePage = lazy(() => import('@/components/pages/mobile-page').then(m => ({ default: m.MobilePage })))
 const DailyEntryPage = lazy(() => import('@/components/pages/daily-entry-page').then(m => ({ default: m.DailyEntryPage })))
+const GuidePage = lazy(() => import('@/components/pages/guide-page').then(m => ({ default: m.GuidePage })))
 
 function PageLoader() {
   return (
@@ -51,7 +51,7 @@ export function AppShell() {
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0 lg:pl-64">
         <Topbar />
-        <main className="flex-1 p-4 sm:p-6 pb-24 lg:pb-6 min-w-0">
+        <main className="flex-1 p-4 sm:p-6 pb-24 lg:pb-6 min-w-0 max-w-[1600px] mx-auto w-full">
           <Suspense fallback={<PageLoader />}>
             {currentNav === 'dashboard' && <DashboardPage />}
             {currentNav === 'projects' && <ProjectsPage />}
@@ -66,6 +66,7 @@ export function AppShell() {
             {currentNav === 'settings' && <SettingsPage />}
             {currentNav === 'mobile' && <MobilePage />}
             {currentNav === 'daily-entry' && <DailyEntryPage />}
+            {currentNav === 'guide' && <GuidePage />}
           </Suspense>
         </main>
       </div>

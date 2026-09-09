@@ -2,15 +2,16 @@
 import { useState, useMemo, useCallback } from 'react'
 import { useAppStore } from '@/store/app-store'
 import { useFetch, apiPost, apiPut, apiDelete } from '@/hooks/use-fetch'
-import { PageHeader } from '@/components/shared/page-header'
+import { SectionHeader, SubSection } from '@/components/shared/section-header'
 import { StatCard } from '@/components/shared/stat-card'
 import { StatusBadge } from '@/components/shared/status-badge'
+import { EmptyState } from '@/components/shared/empty-state'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import { Progress } from '@/components/ui/progress'
 import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '@/components/ui/select'
@@ -78,10 +79,32 @@ const SKILL_BADGE: Record<string, string> = {
   Senior: 'bg-emerald-100 text-emerald-700 border-emerald-200',
 }
 
+// Color dot per team (deterministic hash → hue). Reuses tailwind palette via inline style for safety.
+const TEAM_DOT_COLORS = [
+  { bg: 'bg-cyan-500' },
+  { bg: 'bg-emerald-500' },
+  { bg: 'bg-violet-500' },
+  { bg: 'bg-amber-500' },
+  { bg: 'bg-rose-500' },
+  { bg: 'bg-sky-500' },
+  { bg: 'bg-teal-500' },
+  { bg: 'bg-indigo-500' },
+  { bg: 'bg-pink-500' },
+  { bg: 'bg-orange-500' },
+]
+
 const isSameDay = (a: Date, b: Date) =>
   a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
 
 const toISODate = (d: Date) => d.toISOString().slice(0, 10)
+
+// Deterministic team color from string hash
+function teamDotClass(team: string): string {
+  if (!team) return 'bg-slate-300'
+  let h = 0
+  for (let i = 0; i < team.length; i++) h = (h * 31 + team.charCodeAt(i)) >>> 0
+  return TEAM_DOT_COLORS[h % TEAM_DOT_COLORS.length].bg
+}
 
 function emptyWorkerForm(): WorkerFormState {
   return {
@@ -100,6 +123,8 @@ interface WorkerFormState {
   skillLevel: string
   status: string
 }
+
+const NORMAL_HOURS = 8
 
 export function ManpowerPage() {
   const { user } = useAppStore()
@@ -305,97 +330,136 @@ export function ManpowerPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
+      <SectionHeader
+        section="manpower"
         title="Manpower Management"
         description="Track workers, teams and attendance"
-        icon={<Users className="h-5 w-5" />}
+        icon={<Users className="h-6 w-6" />}
         actions={
           canManage ? (
-            <Button onClick={openNew} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+            <Button onClick={openNew} className="bg-cyan-600 hover:bg-cyan-700 text-white">
               <Plus className="h-4 w-4 mr-2" /> Add Worker
             </Button>
           ) : undefined
         }
       />
 
-      {/* Stat cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-        <StatCard title="Workers On Site" value={stats.onSite} subtitle="Checked in today" icon={<UserCheck className="h-5 w-5" />} accent="green" />
-        <StatCard title="Workers Absent" value={stats.absent} subtitle="Active, not present" icon={<UserX className="h-5 w-5" />} accent="red" />
-        <StatCard title="Total Workers" value={stats.total} subtitle="In roster" icon={<Briefcase className="h-5 w-5" />} accent="blue" />
-        <StatCard title="Total Man-hours" value={formatNumber(stats.manHours)} subtitle="Last 7 days" icon={<Clock className="h-5 w-5" />} accent="orange" />
+      {/* Stat cards — grouped with SubSection */}
+      <div>
+        <SubSection
+          section="manpower"
+          title="Workforce Today"
+          description="Live attendance and 7-day man-hours"
+          icon={<Users className="h-4 w-4" />}
+        />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+          <StatCard
+            title="Workers On Site"
+            value={stats.onSite ?? 0}
+            subtitle="Checked in today"
+            icon={<UserCheck className="h-5 w-5" />}
+            section="manpower"
+          />
+          <StatCard
+            title="Workers Absent"
+            value={stats.absent ?? 0}
+            subtitle="Active, not present"
+            icon={<UserX className="h-5 w-5" />}
+            section="safety"
+          />
+          <StatCard
+            title="Total Workers"
+            value={stats.total ?? 0}
+            subtitle="In roster"
+            icon={<Briefcase className="h-5 w-5" />}
+            section="manpower"
+          />
+          <StatCard
+            title="Total Man-hours"
+            value={formatNumber(stats.manHours ?? 0)}
+            subtitle="Last 7 days"
+            icon={<Clock className="h-5 w-5" />}
+            section="manpower"
+          />
+        </div>
       </div>
 
       {/* Productivity chart */}
-      <Card className="border-border/60 shadow-sm">
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="text-base font-semibold flex items-center gap-2">
-                <BarChart3 className="h-4 w-4 text-emerald-600" /> Team Productivity
-              </CardTitle>
-              <CardDescription className="text-xs">Man-hours per team — last 7 days</CardDescription>
-            </div>
-            <Badge variant="outline" className="border-slate-200 text-slate-600">{productivity.length} teams</Badge>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {productivity.length === 0 ? (
-            <div className="text-center text-sm text-slate-500 py-10">No attendance data for the past 7 days</div>
-          ) : (
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={productivity} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                <XAxis dataKey="team" tick={{ fontSize: 11, fill: '#64748b' }} interval={0} angle={-15} textAnchor="end" height={50} />
-                <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
-                <RTooltip
-                  contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}
-                  formatter={(v: any) => [`${v} h`, 'Man-hours']}
-                />
-                <Bar dataKey="hours" fill="#10b981" radius={[4, 4, 0, 0]} name="Man-hours" />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </CardContent>
-      </Card>
+      <div>
+        <SubSection
+          section="manpower"
+          title="Team Productivity"
+          description="Man-hours per team — last 7 days"
+          icon={<BarChart3 className="h-4 w-4" />}
+          action={<Badge variant="outline" className="border-slate-200 text-slate-600">{productivity.length} teams</Badge>}
+        />
+        <Card className="border-border/60 shadow-sm">
+          <CardContent className="pt-4">
+            {productivity.length === 0 ? (
+              <EmptyState
+                icon={<BarChart3 className="h-6 w-6" />}
+                title="No attendance data"
+                description="No attendance records for the past 7 days."
+              />
+            ) : (
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={productivity} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                  <XAxis dataKey="team" tick={{ fontSize: 11, fill: '#64748b' }} interval={0} angle={-15} textAnchor="end" height={50} />
+                  <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
+                  <RTooltip
+                    contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}
+                    formatter={(v: any) => [`${v} h`, 'Man-hours']}
+                  />
+                  <Bar dataKey="hours" fill="#06b6d4" radius={[4, 4, 0, 0]} name="Man-hours" />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
-      {/* Tabs */}
+      {/* Tabs + filter */}
       <Tabs value={tab} onValueChange={setTab}>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <TabsList>
+          <TabsList className="self-start">
             <TabsTrigger value="workers"><Users className="h-4 w-4 mr-1" /> Workers</TabsTrigger>
             <TabsTrigger value="attendance"><Clock className="h-4 w-4 mr-1" /> Attendance Log</TabsTrigger>
           </TabsList>
 
-          {/* Filter bar (shared) */}
-          <div className="flex flex-wrap items-center gap-2">
-            <Filter className="h-4 w-4 text-slate-400" />
-            <Select value={projectFilter} onValueChange={setProjectFilter}>
-              <SelectTrigger size="sm" className="w-[150px] bg-white"><SelectValue placeholder="All Projects" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Projects</SelectItem>
-                {projects.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
+          {/* Filter bar (shared) — stacked on mobile */}
+          <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2">
+            <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
+              <Filter className="h-4 w-4 text-slate-400" /> Filters
+            </div>
+            <div className="grid grid-cols-1 sm:flex sm:flex-wrap gap-2">
+              <Select value={projectFilter} onValueChange={setProjectFilter}>
+                <SelectTrigger size="sm" className="w-full sm:w-[150px] bg-white"><SelectValue placeholder="All Projects" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Projects</SelectItem>
+                  {projects.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
 
-            <Select value={teamFilter} onValueChange={setTeamFilter}>
-              <SelectTrigger size="sm" className="w-[140px] bg-white"><SelectValue placeholder="All Teams" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Teams</SelectItem>
-                {teams.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-              </SelectContent>
-            </Select>
+              <Select value={teamFilter} onValueChange={setTeamFilter}>
+                <SelectTrigger size="sm" className="w-full sm:w-[140px] bg-white"><SelectValue placeholder="All Teams" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Teams</SelectItem>
+                  {teams.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                </SelectContent>
+              </Select>
 
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger size="sm" className="w-[130px] bg-white"><SelectValue placeholder="All Statuses" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Statuses</SelectItem>
-                {WORKER_STATUSES.map((s) => <SelectItem key={s} value={s}>{WORKER_STATUS_LABELS[s]}</SelectItem>)}
-              </SelectContent>
-            </Select>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger size="sm" className="w-full sm:w-[130px] bg-white"><SelectValue placeholder="All Statuses" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  {WORKER_STATUSES.map((s) => <SelectItem key={s} value={s}>{WORKER_STATUS_LABELS[s]}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
 
             {hasFilters && (
-              <Button variant="ghost" size="sm" onClick={clearFilters} className="text-slate-500">
+              <Button variant="ghost" size="sm" onClick={clearFilters} className="text-slate-500 self-start sm:self-auto">
                 <X className="h-3.5 w-3.5 mr-1" /> Clear
               </Button>
             )}
@@ -403,90 +467,139 @@ export function ManpowerPage() {
         </div>
 
         {/* Workers tab */}
-        <TabsContent value="workers">
+        <TabsContent value="workers" className="mt-4">
           {loading ? (
-            <Card className="border-border/60 shadow-sm animate-pulse"><CardContent className="p-0 h-96" /></Card>
+            <Card className="border-border/60 shadow-sm">
+              <CardContent className="p-0">
+                <div className="space-y-2 p-4">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <div key={i} className="h-12 rounded-lg bg-slate-100 animate-pulse" />
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
           ) : workers.length === 0 ? (
-            <EmptyState message="No workers match your filters" />
+            <Card className="border-dashed border-slate-300 bg-slate-50/50">
+              <CardContent className="p-0">
+                <EmptyState
+                  icon={<Search className="h-6 w-6" />}
+                  title="No workers found"
+                  description="Try adjusting your filters, or click Add Worker to add a new team member."
+                />
+              </CardContent>
+            </Card>
           ) : (
             <Card className="border-border/60 shadow-sm">
               <CardContent className="p-0">
-                <ScrollArea className="max-h-96">
-                  <Table>
-                    <TableHeader className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur">
-                      <TableRow className="hover:bg-transparent">
-                        <TableHead>Emp ID</TableHead>
-                        <TableHead>Name</TableHead>
-                        <TableHead>Role</TableHead>
-                        <TableHead>Team</TableHead>
-                        <TableHead>Project</TableHead>
-                        <TableHead>Skill</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Phone</TableHead>
-                        <TableHead>Today (h)</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {workers.map((w) => {
-                        const checkedIn = isWorkerCheckedIn(w)
-                        const checkedOut = isWorkerCheckedOut(w)
-                        return (
-                          <TableRow key={w.id}>
-                            <TableCell className="text-xs font-mono text-slate-600">{w.employeeId}</TableCell>
-                            <TableCell className="font-medium text-slate-900">{w.name}</TableCell>
-                            <TableCell className="text-slate-700 text-xs">{w.role}</TableCell>
-                            <TableCell className="text-slate-700 text-xs">{w.team || '—'}</TableCell>
-                            <TableCell className="text-slate-600 text-xs truncate max-w-[140px]">{w.project?.name || '—'}</TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className={cn('font-medium', SKILL_BADGE[w.skillLevel] || SKILL_BADGE.Intermediate)}>
-                                {w.skillLevel}
-                              </Badge>
-                            </TableCell>
-                            <TableCell><StatusBadge status={w.status} /></TableCell>
-                            <TableCell className="text-xs text-slate-600">{w.phone || '—'}</TableCell>
-                            <TableCell>
-                              <span className={cn('text-xs font-medium tabular-nums', (todayHoursByWorker[w.id] || 0) > 0 ? 'text-emerald-700' : 'text-slate-400')}>
-                                {formatNumber(todayHoursByWorker[w.id] || 0)}
-                              </span>
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <div className="flex items-center justify-end gap-1">
-                                <Button
-                                  size="sm" variant="outline"
-                                  disabled={!canManage || checkedIn || actionLoading === w.id}
-                                  onClick={() => handleCheckAction(w, 'checkin')}
-                                  className="h-7 px-2 text-emerald-700 border-emerald-200 bg-emerald-50 hover:bg-emerald-100"
-                                  title={checkedIn ? 'Already checked in' : 'Check-in'}
-                                >
-                                  <LogIn className="h-3.5 w-3.5" />
-                                </Button>
-                                <Button
-                                  size="sm" variant="outline"
-                                  disabled={!canManage || !checkedIn || checkedOut || actionLoading === w.id}
-                                  onClick={() => handleCheckAction(w, 'checkout')}
-                                  className="h-7 px-2 text-orange-700 border-orange-200 bg-orange-50 hover:bg-orange-100"
-                                  title={!checkedIn ? 'Check-in first' : checkedOut ? 'Already checked out' : 'Check-out'}
-                                >
-                                  <LogOut className="h-3.5 w-3.5" />
-                                </Button>
-                                {canManage && (
-                                  <>
-                                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-emerald-600" onClick={() => openEdit(w)}>
-                                      <Pencil className="h-3.5 w-3.5" />
-                                    </Button>
-                                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-red-600" onClick={() => setDeleteId(w.id)}>
-                                      <Trash2 className="h-3.5 w-3.5" />
-                                    </Button>
-                                  </>
+                <ScrollArea className="max-h-[500px]">
+                  <div className="min-w-[1000px]">
+                    <Table>
+                      <TableHeader className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur">
+                        <TableRow className="hover:bg-transparent">
+                          <TableHead>Emp ID</TableHead>
+                          <TableHead>Name</TableHead>
+                          <TableHead>Role</TableHead>
+                          <TableHead>Team</TableHead>
+                          <TableHead>Project</TableHead>
+                          <TableHead>Skill</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Phone</TableHead>
+                          <TableHead className="min-w-[140px]">Today (h)</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {workers.map((w) => {
+                          const checkedIn = isWorkerCheckedIn(w)
+                          const checkedOut = isWorkerCheckedOut(w)
+                          const hours = Number(todayHoursByWorker[w.id] || 0)
+                          const pct = Math.min(100, (hours / NORMAL_HOURS) * 100)
+                          const isOvertime = hours > NORMAL_HOURS
+                          return (
+                            <TableRow key={w.id}>
+                              <TableCell className="text-xs font-mono text-slate-600">{w.employeeId}</TableCell>
+                              <TableCell className="font-medium text-slate-900">{w.name}</TableCell>
+                              <TableCell className="text-slate-700 text-xs">{w.role}</TableCell>
+                              <TableCell className="text-slate-700 text-xs">
+                                {w.team ? (
+                                  <span className="inline-flex items-center gap-1.5">
+                                    <span className={cn('h-2 w-2 rounded-full shrink-0', teamDotClass(w.team))} />
+                                    {w.team}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400">—</span>
                                 )}
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        )
-                      })}
-                    </TableBody>
-                  </Table>
+                              </TableCell>
+                              <TableCell className="text-slate-600 text-xs truncate max-w-[140px]">{w.project?.name || '—'}</TableCell>
+                              <TableCell>
+                                <Badge variant="outline" className={cn('font-medium', SKILL_BADGE[w.skillLevel] || SKILL_BADGE.Intermediate)}>
+                                  {w.skillLevel}
+                                </Badge>
+                              </TableCell>
+                              <TableCell><StatusBadge status={w.status} /></TableCell>
+                              <TableCell className="text-xs text-slate-600">{w.phone || '—'}</TableCell>
+                              <TableCell>
+                                {hours > 0 ? (
+                                  <div className="flex flex-col gap-1 min-w-[100px]">
+                                    <div className="flex items-center justify-between text-xs">
+                                      <span className={cn('font-semibold tabular-nums', isOvertime ? 'text-amber-700' : 'text-cyan-700')}>
+                                        {formatNumber(hours)} h
+                                      </span>
+                                      {isOvertime && (
+                                        <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-[10px] py-0 px-1">
+                                          OT
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    <Progress
+                                      value={pct}
+                                      className={cn('h-1.5', isOvertime && '[&>div]:bg-amber-500')}
+                                    />
+                                  </div>
+                                ) : (
+                                  <span className="text-xs text-slate-400">—</span>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex items-center justify-end gap-1">
+                                  <Button
+                                    size="sm" variant="outline"
+                                    disabled={!canManage || checkedIn || actionLoading === w.id}
+                                    onClick={() => handleCheckAction(w, 'checkin')}
+                                    className="h-7 px-2 sm:px-2 text-cyan-700 border-cyan-200 bg-cyan-50 hover:bg-cyan-100 w-full sm:w-auto"
+                                    title={checkedIn ? 'Already checked in' : 'Check-in'}
+                                  >
+                                    <LogIn className="h-3.5 w-3.5" />
+                                    <span className="ml-1 sm:hidden">In</span>
+                                  </Button>
+                                  <Button
+                                    size="sm" variant="outline"
+                                    disabled={!canManage || !checkedIn || checkedOut || actionLoading === w.id}
+                                    onClick={() => handleCheckAction(w, 'checkout')}
+                                    className="h-7 px-2 sm:px-2 text-orange-700 border-orange-200 bg-orange-50 hover:bg-orange-100 w-full sm:w-auto"
+                                    title={!checkedIn ? 'Check-in first' : checkedOut ? 'Already checked out' : 'Check-out'}
+                                  >
+                                    <LogOut className="h-3.5 w-3.5" />
+                                    <span className="ml-1 sm:hidden">Out</span>
+                                  </Button>
+                                  {canManage && (
+                                    <>
+                                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-cyan-600" onClick={() => openEdit(w)}>
+                                        <Pencil className="h-3.5 w-3.5" />
+                                      </Button>
+                                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-red-600" onClick={() => setDeleteId(w.id)}>
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </>
+                                  )}
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          )
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </ScrollArea>
               </CardContent>
             </Card>
@@ -494,53 +607,68 @@ export function ManpowerPage() {
         </TabsContent>
 
         {/* Attendance log tab */}
-        <TabsContent value="attendance">
+        <TabsContent value="attendance" className="mt-4">
           <Card className="border-border/60 shadow-sm">
             <CardHeader className="pb-3">
-              <CardTitle className="text-base font-semibold">Attendance Log</CardTitle>
+              <CardTitle className="text-base font-semibold flex items-center gap-2">
+                <Clock className="h-4 w-4 text-cyan-600" /> Attendance Log
+              </CardTitle>
               <CardDescription className="text-xs">Showing last 7 days of attendance records</CardDescription>
             </CardHeader>
             <CardContent className="p-0">
               {attendanceRecords.length === 0 ? (
-                <div className="text-center text-sm text-slate-500 py-10">No attendance records for the past 7 days</div>
+                <EmptyState
+                  icon={<Clock className="h-6 w-6" />}
+                  title="No attendance records"
+                  description="No attendance records for the past 7 days."
+                />
               ) : (
-                <ScrollArea className="max-h-96">
-                  <Table>
-                    <TableHeader className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur">
-                      <TableRow className="hover:bg-transparent">
-                        <TableHead>Date</TableHead>
-                        <TableHead>Worker</TableHead>
-                        <TableHead>Team</TableHead>
-                        <TableHead>Check-in</TableHead>
-                        <TableHead>Check-out</TableHead>
-                        <TableHead>Working Hours</TableHead>
-                        <TableHead>Overtime</TableHead>
-                        <TableHead>Status</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {attendanceRecords.map((r) => (
-                        <TableRow key={r.id}>
-                          <TableCell className="text-xs text-slate-600">{formatDate(r.date)}</TableCell>
-                          <TableCell className="font-medium text-slate-900 text-sm">{r.worker?.name || '—'}</TableCell>
-                          <TableCell className="text-xs text-slate-600">{r.worker?.team || '—'}</TableCell>
-                          <TableCell className="text-xs text-slate-600">{r.checkIn ? formatDateTime(r.checkIn) : '—'}</TableCell>
-                          <TableCell className="text-xs text-slate-600">{r.checkOut ? formatDateTime(r.checkOut) : '—'}</TableCell>
-                          <TableCell>
-                            <span className="text-xs font-semibold text-slate-700 tabular-nums">{formatNumber(Number(r.workingHours) || 0)} h</span>
-                          </TableCell>
-                          <TableCell>
-                            {Number(r.overtime) > 0 ? (
-                              <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-xs">
-                                +{formatNumber(Number(r.overtime))} h
-                              </Badge>
-                            ) : <span className="text-xs text-slate-400">—</span>}
-                          </TableCell>
-                          <TableCell><StatusBadge status={r.status} /></TableCell>
+                <ScrollArea className="max-h-[500px]">
+                  <div className="min-w-[800px]">
+                    <Table>
+                      <TableHeader className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur">
+                        <TableRow className="hover:bg-transparent">
+                          <TableHead>Date</TableHead>
+                          <TableHead>Worker</TableHead>
+                          <TableHead>Team</TableHead>
+                          <TableHead>Check-in</TableHead>
+                          <TableHead>Check-out</TableHead>
+                          <TableHead>Working Hours</TableHead>
+                          <TableHead>Overtime</TableHead>
+                          <TableHead>Status</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {attendanceRecords.map((r) => (
+                          <TableRow key={r.id}>
+                            <TableCell className="text-xs text-slate-600">{formatDate(r.date)}</TableCell>
+                            <TableCell className="font-medium text-slate-900 text-sm">{r.worker?.name || '—'}</TableCell>
+                            <TableCell className="text-xs text-slate-600">
+                              {r.worker?.team ? (
+                                <span className="inline-flex items-center gap-1.5">
+                                  <span className={cn('h-2 w-2 rounded-full shrink-0', teamDotClass(r.worker.team))} />
+                                  {r.worker.team}
+                                </span>
+                              ) : '—'}
+                            </TableCell>
+                            <TableCell className="text-xs text-slate-600">{r.checkIn ? formatDateTime(r.checkIn) : '—'}</TableCell>
+                            <TableCell className="text-xs text-slate-600">{r.checkOut ? formatDateTime(r.checkOut) : '—'}</TableCell>
+                            <TableCell>
+                              <span className="text-xs font-semibold text-slate-700 tabular-nums">{formatNumber(Number(r.workingHours) || 0)} h</span>
+                            </TableCell>
+                            <TableCell>
+                              {Number(r.overtime) > 0 ? (
+                                <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-xs">
+                                  +{formatNumber(Number(r.overtime))} h
+                                </Badge>
+                              ) : <span className="text-xs text-slate-400">—</span>}
+                            </TableCell>
+                            <TableCell><StatusBadge status={r.status} /></TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </ScrollArea>
               )}
             </CardContent>
@@ -550,7 +678,7 @@ export function ManpowerPage() {
 
       {/* Add/Edit worker dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto ayk-scrollbar">
+        <DialogContent className="w-full sm:max-w-lg max-h-[90vh] overflow-y-auto ayk-scrollbar">
           <DialogHeader>
             <DialogTitle>{editing ? 'Edit Worker' : 'Add Worker'}</DialogTitle>
             <DialogDescription>
@@ -626,9 +754,9 @@ export function ManpowerPage() {
             </div>
           </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
-            <Button disabled={submitting} onClick={handleSubmit} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button variant="outline" onClick={() => setDialogOpen(false)} className="w-full sm:w-auto">Cancel</Button>
+            <Button disabled={submitting} onClick={handleSubmit} className="bg-cyan-600 hover:bg-cyan-700 text-white w-full sm:w-auto">
               {submitting ? 'Saving…' : editing ? 'Update Worker' : 'Add Worker'}
             </Button>
           </DialogFooter>
@@ -653,19 +781,5 @@ export function ManpowerPage() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
-  )
-}
-
-function EmptyState({ message }: { message: string }) {
-  return (
-    <Card className="border-dashed border-slate-300 bg-slate-50/50">
-      <CardContent className="py-16 flex flex-col items-center justify-center text-center">
-        <div className="h-12 w-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mb-3">
-          <Search className="h-6 w-6" />
-        </div>
-        <h3 className="text-base font-semibold text-slate-800">No results</h3>
-        <p className="text-sm text-slate-500 mt-1 max-w-sm">{message}</p>
-      </CardContent>
-    </Card>
   )
 }

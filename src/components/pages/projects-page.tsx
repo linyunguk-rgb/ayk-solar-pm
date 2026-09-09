@@ -3,9 +3,10 @@
 import { useEffect, useState } from 'react'
 import { useAppStore } from '@/store/app-store'
 import { useFetch, apiPost, apiPut, apiDelete } from '@/hooks/use-fetch'
-import { PageHeader } from '@/components/shared/page-header'
+import { SectionHeader, SubSection } from '@/components/shared/section-header'
 import { StatCard } from '@/components/shared/stat-card'
 import { StatusBadge, PriorityBadge } from '@/components/shared/status-badge'
+import { EmptyState } from '@/components/shared/empty-state'
 import {
   Card, CardContent, CardHeader, CardTitle, CardDescription,
 } from '@/components/ui/card'
@@ -37,7 +38,7 @@ import {
 import {
   FolderKanban, MapPin, Calendar, Plus, Pencil, Trash2, ArrowLeft,
   Search, Filter, DollarSign, TrendingUp, FileText, Package, Sun,
-  CheckCircle2, Clock, AlertTriangle, ChevronRight,
+  CheckCircle2, Clock, AlertTriangle, ChevronRight, BarChart3, LineChart,
 } from 'lucide-react'
 import {
   PROJECT_STATUSES, PROJECT_STATUS_LABELS,
@@ -52,6 +53,17 @@ export function ProjectsPage() {
   const { detailProjectId } = useAppStore()
   if (detailProjectId) return <ProjectDetail />
   return <ProjectsList />
+}
+
+// Status → colored top strip on project cards (matches dashboard pattern)
+function statusStripClass(status: string): string {
+  switch (status) {
+    case 'Active': return 'bg-emerald-500'
+    case 'Completed': return 'bg-sky-500'
+    case 'Delayed': return 'bg-red-500'
+    case 'OnHold': return 'bg-amber-500'
+    default: return 'bg-slate-300'
+  }
 }
 
 // ============================================================
@@ -162,13 +174,14 @@ function ProjectsList() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
+      <SectionHeader
+        section="projects"
         title="Projects"
-        description="Manage all solar construction projects"
-        icon={<FolderKanban className="h-5 w-5" />}
+        description="Manage solar installation projects end to end"
+        icon={<FolderKanban className="h-6 w-6" />}
         actions={
           canEdit ? (
-            <Button onClick={openCreate} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+            <Button onClick={openCreate} className="bg-sky-600 hover:bg-sky-700 text-white">
               <Plus className="h-4 w-4" /> New Project
             </Button>
           ) : null
@@ -177,8 +190,8 @@ function ProjectsList() {
 
       {/* Filter bar */}
       <Card className="border-border/60 shadow-sm">
-        <CardContent className="p-4 flex flex-col sm:flex-row gap-3 sm:items-center">
-          <div className="relative flex-1 min-w-0">
+        <CardContent className="p-4 space-y-3">
+          <div className="relative">
             <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Search by name, location, code..."
@@ -187,11 +200,11 @@ function ProjectsList() {
               className="pl-9"
             />
           </div>
-          <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
             <div className="flex items-center gap-2">
-              <Filter className="h-4 w-4 text-muted-foreground" />
+              <Filter className="h-4 w-4 text-muted-foreground shrink-0" />
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[150px]">
+                <SelectTrigger className="w-full sm:w-[160px]">
                   <SelectValue placeholder="All statuses" />
                 </SelectTrigger>
                 <SelectContent>
@@ -202,11 +215,11 @@ function ProjectsList() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex rounded-md border border-border/60 overflow-hidden">
+            <div className="flex rounded-md border border-border/60 overflow-hidden self-start sm:self-center">
               <Button
                 size="sm"
                 variant={view === 'cards' ? 'default' : 'ghost'}
-                className={`rounded-none ${view === 'cards' ? 'bg-emerald-600 text-white hover:bg-emerald-700' : ''}`}
+                className={`rounded-none ${view === 'cards' ? 'bg-sky-600 text-white hover:bg-sky-700' : ''}`}
                 onClick={() => setView('cards')}
               >
                 Cards
@@ -214,7 +227,7 @@ function ProjectsList() {
               <Button
                 size="sm"
                 variant={view === 'table' ? 'default' : 'ghost'}
-                className={`rounded-none ${view === 'table' ? 'bg-emerald-600 text-white hover:bg-emerald-700' : ''}`}
+                className={`rounded-none ${view === 'table' ? 'bg-sky-600 text-white hover:bg-sky-700' : ''}`}
                 onClick={() => setView('table')}
               >
                 Table
@@ -234,19 +247,17 @@ function ProjectsList() {
         </div>
       ) : projects.length === 0 ? (
         <Card className="border-border/60 shadow-sm">
-          <CardContent className="p-12 flex flex-col items-center justify-center text-center">
-            <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-3">
-              <FolderKanban className="h-6 w-6 text-muted-foreground" />
-            </div>
-            <h3 className="text-sm font-medium">No projects found</h3>
-            <p className="text-xs text-muted-foreground mt-1">
-              Try adjusting your filters or create a new project.
-            </p>
-            {canEdit && (
-              <Button onClick={openCreate} className="mt-4 bg-emerald-600 hover:bg-emerald-700 text-white">
-                <Plus className="h-4 w-4" /> New Project
-              </Button>
-            )}
+          <CardContent className="p-0">
+            <EmptyState
+              icon={<FolderKanban className="h-5 w-5" />}
+              title="No projects found"
+              description="Try adjusting your filters or create a new project."
+              action={canEdit ? (
+                <Button onClick={openCreate} className="bg-sky-600 hover:bg-sky-700 text-white">
+                  <Plus className="h-4 w-4" /> New Project
+                </Button>
+              ) : undefined}
+            />
           </CardContent>
         </Card>
       ) : view === 'cards' ? (
@@ -259,8 +270,8 @@ function ProjectsList() {
         <Card className="border-border/60 shadow-sm">
           <CardContent className="p-0">
             <ScrollArea className="max-h-[600px] ayk-scrollbar">
-              <Table>
-                <TableHeader>
+              <Table className="min-w-[1000px]">
+                <TableHeader className="sticky top-0 bg-card z-10">
                   <TableRow>
                     <TableHead>Code</TableHead>
                     <TableHead>Name</TableHead>
@@ -278,7 +289,7 @@ function ProjectsList() {
                   {projects.map((p: any) => (
                     <TableRow
                       key={p.id}
-                      className="cursor-pointer hover:bg-muted/40"
+                      className="cursor-pointer hover:bg-slate-50"
                       onClick={() => openProject(p.id)}
                     >
                       <TableCell className="font-mono text-xs">{p.code}</TableCell>
@@ -331,7 +342,7 @@ function ProjectsList() {
 
       {/* Create / Edit dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-[640px] max-h-[90vh] overflow-y-auto ayk-scrollbar">
+        <DialogContent className="w-full sm:max-w-2xl max-h-[90vh] overflow-y-auto ayk-scrollbar">
           <DialogHeader>
             <DialogTitle>{editId ? 'Edit Project' : 'New Project'}</DialogTitle>
             <DialogDescription>
@@ -344,7 +355,7 @@ function ProjectsList() {
             <Button
               onClick={onSubmit}
               disabled={submitting}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              className="bg-sky-600 hover:bg-sky-700 text-white"
             >
               {submitting ? 'Saving...' : editId ? 'Save Changes' : 'Create Project'}
             </Button>
@@ -383,22 +394,23 @@ function ProjectCard({ project, onOpen }: { project: any; onOpen: () => void }) 
       ? Math.round((project.installedPanels / project.totalPanels) * 1000) / 10
       : 0
   const budgetPct =
-    project.budget > 0 ? Math.min(100, (project.actualCost / project.budget) * 100) : 0
+    project.budget > 0 ? Math.min(100, ((project.actualCost || 0) / project.budget) * 100) : 0
 
   return (
     <Card
       className="overflow-hidden hover:shadow-md transition-shadow cursor-pointer group border-border/60"
       onClick={onOpen}
     >
+      <div className={`h-1.5 w-full ${statusStripClass(project.status)}`} />
       <CardContent className="p-5">
         <div className="flex items-start justify-between gap-2 mb-3">
           <div className="min-w-0">
             <div className="font-mono text-[10px] text-muted-foreground mb-0.5">{project.code}</div>
-            <h3 className="font-semibold text-slate-900 truncate group-hover:text-emerald-600 transition">
+            <h3 className="font-semibold text-slate-900 truncate group-hover:text-sky-600 transition">
               {project.name}
             </h3>
             <div className="flex items-center gap-1 text-xs text-slate-500 mt-0.5">
-              <MapPin className="h-3 w-3" /> {project.location}
+              <MapPin className="h-3 w-3 shrink-0" /> <span className="truncate">{project.location}</span>
             </div>
           </div>
           <StatusBadge status={project.status} />
@@ -431,7 +443,7 @@ function ProjectCard({ project, onOpen }: { project: any; onOpen: () => void }) 
           </div>
 
           <div className="flex items-center justify-between text-xs text-slate-500 pt-2 border-t border-slate-100">
-            <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> {formatDate(project.startDate)}</span>
+            <span className="flex items-center gap-1"><Calendar className="h-3 w-3 shrink-0" /> {formatDate(project.startDate)}</span>
             <span>→</span>
             <span className="flex items-center gap-1">{formatDate(project.endDate)}</span>
           </div>
@@ -621,11 +633,17 @@ function ProjectDetail() {
   if (loading || !project) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={closeProject}>
-            <ArrowLeft className="h-4 w-4" /> Back
-          </Button>
-        </div>
+        <SectionHeader
+          section="projects"
+          title="Project"
+          description="Loading project details..."
+          icon={<FolderKanban className="h-6 w-6" />}
+          actions={
+            <Button variant="outline" onClick={closeProject}>
+              <ArrowLeft className="h-4 w-4" /> Back
+            </Button>
+          }
+        />
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
           {Array.from({ length: 9 }).map((_, i) => (
             <Card key={i} className="animate-pulse"><CardContent className="p-4 h-28" /></Card>
@@ -636,15 +654,16 @@ function ProjectDetail() {
     )
   }
 
-  const variance = (project.overallProgress || 0) - (project.plannedProgress || 0)
-  const remaining = (project.budget || 0) - (project.actualCost || 0)
+  const variance = ((project.overallProgress || 0) - (project.plannedProgress || 0))
+  const remaining = ((project.budget || 0) - (project.actualCost || 0))
 
   return (
     <div className="space-y-6">
-      <PageHeader
+      <SectionHeader
+        section="projects"
         title={project.name}
         description={`${project.code} · ${project.location}${project.client ? ' · ' + project.client : ''}`}
-        icon={<FolderKanban className="h-5 w-5" />}
+        icon={<FolderKanban className="h-6 w-6" />}
         actions={
           <div className="flex items-center gap-2 flex-wrap">
             <StatusBadge status={project.status} />
@@ -652,7 +671,7 @@ function ProjectDetail() {
               <ArrowLeft className="h-4 w-4" /> Back
             </Button>
             {canEdit && (
-              <Button onClick={openEdit} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+              <Button onClick={openEdit} className="bg-sky-600 hover:bg-sky-700 text-white">
                 <Pencil className="h-4 w-4" /> Edit
               </Button>
             )}
@@ -669,36 +688,44 @@ function ProjectDetail() {
         </Card>
       )}
 
-      {/* Stat cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
-        <StatCard title="Total Panels" value={formatNumber(project.totalPanels)} subtitle={project.capacity || ''} icon={<Sun className="h-5 w-5" />} accent="orange" />
-        <StatCard title="Installed" value={formatNumber(project.installedPanels)} subtitle={`${project.installationPct || 0}% complete`} icon={<CheckCircle2 className="h-5 w-5" />} accent="green" />
-        <StatCard title="Installation %" value={`${project.installationPct || 0}%`} icon={<TrendingUp className="h-5 w-5" />} accent="green" />
-        <StatCard title="Overall Progress" value={`${project.overallProgress || 0}%`} subtitle={`Planned ${project.plannedProgress || 0}%`} icon={<TrendingUp className="h-5 w-5" />} accent="blue" />
-        <StatCard title="Planned Progress" value={`${project.plannedProgress || 0}%`} icon={<Clock className="h-5 w-5" />} accent="blue" />
-        <StatCard
-          title="Variance"
-          value={`${variance >= 0 ? '+' : ''}${variance.toFixed(1)}%`}
-          subtitle={variance >= 0 ? 'Ahead of schedule' : 'Behind schedule'}
-          icon={<AlertTriangle className="h-5 w-5" />}
-          accent={variance >= 0 ? 'green' : 'red'}
+      {/* Overview KPIs */}
+      <div>
+        <SubSection
+          section="projects"
+          title="Overview"
+          description="Key project metrics at a glance"
+          icon={<BarChart3 className="h-4 w-4" />}
         />
-        <StatCard title="Budget" value={formatCurrency(project.budget || 0)} icon={<DollarSign className="h-5 w-5" />} accent="purple" />
-        <StatCard title="Actual Cost" value={formatCurrency(project.actualCost || 0)} icon={<DollarSign className="h-5 w-5" />} accent="orange" />
-        <StatCard
-          title="Remaining"
-          value={formatCurrency(remaining)}
-          subtitle={remaining >= 0 ? 'Under budget' : 'Over budget'}
-          icon={<DollarSign className="h-5 w-5" />}
-          accent={remaining >= 0 ? 'green' : 'red'}
-        />
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+          <StatCard title="Total Panels" value={formatNumber(project.totalPanels ?? 0)} subtitle={project.capacity || ''} icon={<Sun className="h-5 w-5" />} section="projects" />
+          <StatCard title="Installed" value={formatNumber(project.installedPanels ?? 0)} subtitle={`${project.installationPct || 0}% complete`} icon={<CheckCircle2 className="h-5 w-5" />} section="overview" />
+          <StatCard title="Installation %" value={`${project.installationPct || 0}%`} icon={<TrendingUp className="h-5 w-5" />} section="overview" />
+          <StatCard title="Overall Progress" value={`${project.overallProgress || 0}%`} subtitle={`Planned ${project.plannedProgress || 0}%`} icon={<TrendingUp className="h-5 w-5" />} section="projects" />
+          <StatCard title="Planned Progress" value={`${project.plannedProgress || 0}%`} icon={<Clock className="h-5 w-5" />} section="progress" />
+          <StatCard
+            title="Variance"
+            value={`${variance >= 0 ? '+' : ''}${variance.toFixed(1)}%`}
+            subtitle={variance >= 0 ? 'Ahead of schedule' : 'Behind schedule'}
+            icon={<AlertTriangle className="h-5 w-5" />}
+            section={variance >= 0 ? 'overview' : 'safety'}
+          />
+          <StatCard title="Budget" value={formatCurrency(project.budget ?? 0)} icon={<DollarSign className="h-5 w-5" />} section="expenses" />
+          <StatCard title="Actual Cost" value={formatCurrency(project.actualCost ?? 0)} icon={<DollarSign className="h-5 w-5" />} section="expenses" />
+          <StatCard
+            title="Remaining"
+            value={formatCurrency(remaining)}
+            subtitle={remaining >= 0 ? 'Under budget' : 'Over budget'}
+            icon={<DollarSign className="h-5 w-5" />}
+            section={remaining >= 0 ? 'overview' : 'safety'}
+          />
+        </div>
       </div>
 
       {/* S-Curve chart */}
       <Card className="border-border/60 shadow-sm">
         <CardHeader className="pb-2">
-          <CardTitle className="text-base font-semibold">
-            S-Curve — Cumulative Panels (Planned vs Actual)
+          <CardTitle className="text-base font-semibold flex items-center gap-2">
+            <LineChart className="h-4 w-4 text-sky-600" /> S-Curve — Cumulative Panels (Planned vs Actual)
           </CardTitle>
           <CardDescription className="text-xs">
             Daily progress tracked against ideal planned trajectory
@@ -707,7 +734,7 @@ function ProjectDetail() {
         <CardContent>
           {project.sCurve && project.sCurve.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
-              <AreaChart data={project.sCurve} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
+              <AreaChart data={project.sCurve} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
                 <defs>
                   <linearGradient id="gActual" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#10b981" stopOpacity={0.4} />
@@ -727,6 +754,7 @@ function ProjectDetail() {
                 <YAxis
                   tick={{ fontSize: 11, fill: '#64748b' }}
                   tickFormatter={(v: any) => formatNumber(v)}
+                  label={{ value: 'Cumulative panels', angle: -90, position: 'insideLeft', style: { fontSize: 11, fill: '#64748b', textAnchor: 'middle' } }}
                 />
                 <RTooltip
                   contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}
@@ -742,7 +770,8 @@ function ProjectDetail() {
             <EmptyState
               icon={<TrendingUp className="h-5 w-5" />}
               title="No progress data yet"
-              desc="Daily progress submissions will populate the S-curve chart."
+              description="Daily progress submissions will populate the S-curve chart."
+              className="py-16"
             />
           )}
         </CardContent>
@@ -766,7 +795,7 @@ function ProjectDetail() {
           <Card className="border-border/60 shadow-sm">
             <CardHeader className="pb-3">
               <CardTitle className="text-base font-semibold flex items-center gap-2">
-                <Sun className="h-4 w-4" /> Daily Progress
+                <Sun className="h-4 w-4 text-sky-600" /> Daily Progress
               </CardTitle>
               <CardDescription className="text-xs">
                 Most recent site entries ({project.dailyProgress?.length || 0})
@@ -775,8 +804,8 @@ function ProjectDetail() {
             <CardContent>
               {project.dailyProgress && project.dailyProgress.length > 0 ? (
                 <ScrollArea className="max-h-96 ayk-scrollbar">
-                  <Table>
-                    <TableHeader>
+                  <Table className="min-w-[800px]">
+                    <TableHeader className="sticky top-0 bg-card z-10">
                       <TableRow>
                         <TableHead>Date</TableHead>
                         <TableHead>Installed</TableHead>
@@ -790,7 +819,7 @@ function ProjectDetail() {
                     </TableHeader>
                     <TableBody>
                       {project.dailyProgress.map((d: any) => (
-                        <TableRow key={d.id}>
+                        <TableRow key={d.id} className="hover:bg-slate-50">
                           <TableCell className="text-xs">{formatDate(d.date)}</TableCell>
                           <TableCell className="text-xs font-medium">{formatNumber(d.installedPanels)}</TableCell>
                           <TableCell className="text-xs">{formatNumber(d.totalInstalled)}</TableCell>
@@ -807,7 +836,7 @@ function ProjectDetail() {
                   </Table>
                 </ScrollArea>
               ) : (
-                <EmptyState icon={<Sun className="h-5 w-5" />} title="No progress entries" desc="Daily progress submissions will appear here." />
+                <EmptyState icon={<Sun className="h-5 w-5" />} title="No progress entries" description="Daily progress submissions will appear here." />
               )}
             </CardContent>
           </Card>
@@ -819,7 +848,7 @@ function ProjectDetail() {
             <CardHeader className="pb-3 flex flex-row items-center justify-between gap-3">
               <div>
                 <CardTitle className="text-base font-semibold flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4" /> Tasks
+                  <CheckCircle2 className="h-4 w-4 text-sky-600" /> Tasks
                 </CardTitle>
                 <CardDescription className="text-xs">
                   {project.tasks?.length || 0} task(s) for this project
@@ -832,8 +861,8 @@ function ProjectDetail() {
             <CardContent>
               {project.tasks && project.tasks.length > 0 ? (
                 <ScrollArea className="max-h-96 ayk-scrollbar">
-                  <Table>
-                    <TableHeader>
+                  <Table className="min-w-[700px]">
+                    <TableHeader className="sticky top-0 bg-card z-10">
                       <TableRow>
                         <TableHead>Title</TableHead>
                         <TableHead>Priority</TableHead>
@@ -845,7 +874,7 @@ function ProjectDetail() {
                     </TableHeader>
                     <TableBody>
                       {project.tasks.map((t: any) => (
-                        <TableRow key={t.id}>
+                        <TableRow key={t.id} className="hover:bg-slate-50">
                           <TableCell className="font-medium text-sm">{t.title}</TableCell>
                           <TableCell><PriorityBadge priority={t.priority} /></TableCell>
                           <TableCell><StatusBadge status={t.status} /></TableCell>
@@ -863,7 +892,7 @@ function ProjectDetail() {
                   </Table>
                 </ScrollArea>
               ) : (
-                <EmptyState icon={<CheckCircle2 className="h-5 w-5" />} title="No tasks" desc="Tasks assigned to this project will appear here." />
+                <EmptyState icon={<CheckCircle2 className="h-5 w-5" />} title="No tasks" description="Tasks assigned to this project will appear here." />
               )}
             </CardContent>
           </Card>
@@ -875,7 +904,7 @@ function ProjectDetail() {
             <CardHeader className="pb-3 flex flex-row items-center justify-between gap-3">
               <div>
                 <CardTitle className="text-base font-semibold flex items-center gap-2">
-                  <DollarSign className="h-4 w-4" /> Expenses
+                  <DollarSign className="h-4 w-4 text-sky-600" /> Expenses
                 </CardTitle>
                 <CardDescription className="text-xs">
                   {project.expenses?.length || 0} expense(s)
@@ -888,8 +917,8 @@ function ProjectDetail() {
             <CardContent>
               {project.expenses && project.expenses.length > 0 ? (
                 <ScrollArea className="max-h-96 ayk-scrollbar">
-                  <Table>
-                    <TableHeader>
+                  <Table className="min-w-[800px]">
+                    <TableHeader className="sticky top-0 bg-card z-10">
                       <TableRow>
                         <TableHead>Date</TableHead>
                         <TableHead>Category</TableHead>
@@ -901,7 +930,7 @@ function ProjectDetail() {
                     </TableHeader>
                     <TableBody>
                       {project.expenses.map((e: any) => (
-                        <TableRow key={e.id}>
+                        <TableRow key={e.id} className="hover:bg-slate-50">
                           <TableCell className="text-xs">{formatDate(e.date)}</TableCell>
                           <TableCell className="text-xs">{e.category}</TableCell>
                           <TableCell className="text-xs max-w-[240px] truncate">{e.description}</TableCell>
@@ -914,7 +943,7 @@ function ProjectDetail() {
                   </Table>
                 </ScrollArea>
               ) : (
-                <EmptyState icon={<DollarSign className="h-5 w-5" />} title="No expenses" desc="Expenses logged to this project will appear here." />
+                <EmptyState icon={<DollarSign className="h-5 w-5" />} title="No expenses" description="Expenses logged to this project will appear here." />
               )}
             </CardContent>
           </Card>
@@ -926,7 +955,7 @@ function ProjectDetail() {
             <CardHeader className="pb-3 flex flex-row items-center justify-between gap-3">
               <div>
                 <CardTitle className="text-base font-semibold flex items-center gap-2">
-                  <FileText className="h-4 w-4" /> Documents
+                  <FileText className="h-4 w-4 text-sky-600" /> Documents
                 </CardTitle>
                 <CardDescription className="text-xs">
                   {project.documents?.length || 0} document(s)
@@ -939,8 +968,8 @@ function ProjectDetail() {
             <CardContent>
               {project.documents && project.documents.length > 0 ? (
                 <ScrollArea className="max-h-96 ayk-scrollbar">
-                  <Table>
-                    <TableHeader>
+                  <Table className="min-w-[700px]">
+                    <TableHeader className="sticky top-0 bg-card z-10">
                       <TableRow>
                         <TableHead>Name</TableHead>
                         <TableHead>Category</TableHead>
@@ -951,7 +980,7 @@ function ProjectDetail() {
                     </TableHeader>
                     <TableBody>
                       {project.documents.map((d: any) => (
-                        <TableRow key={d.id}>
+                        <TableRow key={d.id} className="hover:bg-slate-50">
                           <TableCell className="text-sm font-medium">
                             <span className="inline-flex items-center gap-2">
                               <FileText className="h-4 w-4 text-muted-foreground" /> {d.name}
@@ -969,7 +998,7 @@ function ProjectDetail() {
                   </Table>
                 </ScrollArea>
               ) : (
-                <EmptyState icon={<FileText className="h-5 w-5" />} title="No documents" desc="Project documents will appear here." />
+                <EmptyState icon={<FileText className="h-5 w-5" />} title="No documents" description="Project documents will appear here." />
               )}
             </CardContent>
           </Card>
@@ -980,7 +1009,7 @@ function ProjectDetail() {
           <Card className="border-border/60 shadow-sm">
             <CardHeader className="pb-3">
               <CardTitle className="text-base font-semibold flex items-center gap-2">
-                <Package className="h-4 w-4" /> Material Transactions
+                <Package className="h-4 w-4 text-sky-600" /> Material Transactions
               </CardTitle>
               <CardDescription className="text-xs">
                 {project.materialTransactions?.length || 0} transaction(s)
@@ -989,8 +1018,8 @@ function ProjectDetail() {
             <CardContent>
               {project.materialTransactions && project.materialTransactions.length > 0 ? (
                 <ScrollArea className="max-h-96 ayk-scrollbar">
-                  <Table>
-                    <TableHeader>
+                  <Table className="min-w-[700px]">
+                    <TableHeader className="sticky top-0 bg-card z-10">
                       <TableRow>
                         <TableHead>Material</TableHead>
                         <TableHead>Type</TableHead>
@@ -1001,7 +1030,7 @@ function ProjectDetail() {
                     </TableHeader>
                     <TableBody>
                       {project.materialTransactions.map((m: any) => (
-                        <TableRow key={m.id}>
+                        <TableRow key={m.id} className="hover:bg-slate-50">
                           <TableCell className="text-sm font-medium">{m.material?.name || '—'}</TableCell>
                           <TableCell>
                             <Badge
@@ -1028,7 +1057,7 @@ function ProjectDetail() {
                   </Table>
                 </ScrollArea>
               ) : (
-                <EmptyState icon={<Package className="h-5 w-5" />} title="No material transactions" desc="Material issues and receipts will appear here." />
+                <EmptyState icon={<Package className="h-5 w-5" />} title="No material transactions" description="Material issues and receipts will appear here." />
               )}
             </CardContent>
           </Card>
@@ -1037,7 +1066,7 @@ function ProjectDetail() {
 
       {/* Edit dialog */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="sm:max-w-[640px] max-h-[90vh] overflow-y-auto ayk-scrollbar">
+        <DialogContent className="w-full sm:max-w-2xl max-h-[90vh] overflow-y-auto ayk-scrollbar">
           <DialogHeader>
             <DialogTitle>Edit Project</DialogTitle>
             <DialogDescription>Update the project details below.</DialogDescription>
@@ -1050,7 +1079,7 @@ function ProjectDetail() {
             <Button
               onClick={onSaveEdit}
               disabled={savingEdit}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              className="bg-sky-600 hover:bg-sky-700 text-white"
             >
               {savingEdit ? 'Saving...' : 'Save Changes'}
             </Button>
@@ -1114,7 +1143,9 @@ function StagesCard({
     <Card className="border-border/60 shadow-sm">
       <CardHeader className="pb-3 flex flex-row items-center justify-between gap-3">
         <div>
-          <CardTitle className="text-base font-semibold">Project Stages</CardTitle>
+          <CardTitle className="text-base font-semibold flex items-center gap-2">
+            <FolderKanban className="h-4 w-4 text-sky-600" /> Project Stages
+          </CardTitle>
           <CardDescription className="text-xs">Weighted progress across {stages.length || 6} stages</CardDescription>
         </div>
         {canEdit && (
@@ -1122,7 +1153,7 @@ function StagesCard({
             size="sm"
             onClick={save}
             disabled={saving}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            className="bg-sky-600 hover:bg-sky-700 text-white"
           >
             {saving ? 'Saving...' : 'Save Stages'}
           </Button>
@@ -1133,12 +1164,12 @@ function StagesCard({
           <EmptyState
             icon={<FolderKanban className="h-5 w-5" />}
             title="No stages defined"
-            desc="Stages are created when the project is added."
+            description="Stages are created when the project is added."
           />
         ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
+          <ScrollArea className="max-h-[500px] ayk-scrollbar">
+            <Table className="min-w-[900px]">
+              <TableHeader className="sticky top-0 bg-card z-10">
                 <TableRow>
                   <TableHead>Stage</TableHead>
                   <TableHead>Planned %</TableHead>
@@ -1152,7 +1183,7 @@ function StagesCard({
               </TableHeader>
               <TableBody>
                 {stages.map((s, i) => (
-                  <TableRow key={s.id}>
+                  <TableRow key={s.id} className="hover:bg-slate-50">
                     <TableCell className="font-medium text-sm">{s.name}</TableCell>
                     <TableCell className="text-xs">{s.plannedPct}%</TableCell>
                     <TableCell>
@@ -1199,7 +1230,7 @@ function StagesCard({
                 ))}
               </TableBody>
             </Table>
-          </div>
+          </ScrollArea>
         )}
       </CardContent>
     </Card>
@@ -1209,24 +1240,6 @@ function StagesCard({
 // ============================================================
 // Helpers
 // ============================================================
-function EmptyState({
-  icon, title, desc,
-}: {
-  icon: React.ReactNode
-  title: string
-  desc: string
-}) {
-  return (
-    <div className="py-10 flex flex-col items-center justify-center text-center">
-      <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center mb-2 text-muted-foreground">
-        {icon}
-      </div>
-      <h4 className="text-sm font-medium">{title}</h4>
-      <p className="text-xs text-muted-foreground mt-1">{desc}</p>
-    </div>
-  )
-}
-
 function toInputDate(d: string | Date): string {
   const date = typeof d === 'string' ? new Date(d) : d
   return date.toISOString().slice(0, 10)

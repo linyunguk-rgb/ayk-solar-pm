@@ -1,0 +1,1234 @@
+     1→'use client'
+     2→
+     3→import { useEffect, useState } from 'react'
+     4→import { useAppStore } from '@/store/app-store'
+     5→import { useFetch, apiPost, apiPut, apiDelete } from '@/hooks/use-fetch'
+     6→import { PageHeader } from '@/components/shared/page-header'
+     7→import { StatCard } from '@/components/shared/stat-card'
+     8→import { StatusBadge, PriorityBadge } from '@/components/shared/status-badge'
+     9→import {
+    10→  Card, CardContent, CardHeader, CardTitle, CardDescription,
+    11→} from '@/components/ui/card'
+    12→import { Button } from '@/components/ui/button'
+    13→import { Input } from '@/components/ui/input'
+    14→import { Label } from '@/components/ui/label'
+    15→import { Textarea } from '@/components/ui/textarea'
+    16→import {
+    17→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    18→} from '@/components/ui/select'
+    19→import {
+    20→  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+    21→} from '@/components/ui/dialog'
+    22→import {
+    23→  Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
+    24→} from '@/components/ui/table'
+    25→import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+    26→import { Progress } from '@/components/ui/progress'
+    27→import { Badge } from '@/components/ui/badge'
+    28→import { ScrollArea } from '@/components/ui/scroll-area'
+    29→import {
+    30→  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    31→  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+    32→} from '@/components/ui/alert-dialog'
+    33→import {
+    34→  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid,
+    35→  Tooltip as RTooltip, Legend,
+    36→} from 'recharts'
+    37→import {
+    38→  FolderKanban, MapPin, Calendar, Plus, Pencil, Trash2, ArrowLeft,
+    39→  Search, Filter, DollarSign, TrendingUp, FileText, Package, Sun,
+    40→  CheckCircle2, Clock, AlertTriangle, ChevronRight,
+    41→} from 'lucide-react'
+    42→import {
+    43→  PROJECT_STATUSES, PROJECT_STATUS_LABELS,
+    44→  formatCurrency, formatNumber, formatDate,
+    45→} from '@/lib/constants'
+    46→import { toast } from 'sonner'
+    47→
+    48→// ============================================================
+    49→// Root component — switches between list and detail mode
+    50→// ============================================================
+    51→export function ProjectsPage() {
+    52→  const { detailProjectId } = useAppStore()
+    53→  if (detailProjectId) return <ProjectDetail />
+    54→  return <ProjectsList />
+    55→}
+    56→
+    57→// ============================================================
+    58→// LIST MODE
+    59→// ============================================================
+    60→const EMPTY_FORM = {
+    61→  name: '', location: '', client: '', capacity: '', totalPanels: '',
+    62→  budget: '', status: 'Active', startDate: '', endDate: '',
+    63→  description: '', managerId: '',
+    64→}
+    65→
+    66→function ProjectsList() {
+    67→  const { user, openProject } = useAppStore()
+    68→  const canEdit = user?.role === 'Admin' || user?.role === 'ProjectManager'
+    69→  const canDelete = user?.role === 'Admin'
+    70→
+    71→  const [statusFilter, setStatusFilter] = useState<string>('all')
+    72→  const [search, setSearch] = useState('')
+    73→  const [view, setView] = useState<'cards' | 'table'>('cards')
+    74→
+    75→  const listUrl = statusFilter === 'all' ? '/api/projects' : `/api/projects?status=${statusFilter}`
+    76→  const { data, loading, refetch } = useFetch<any>(listUrl)
+    77→
+    78→  const { data: usersData } = useFetch<any>('/api/users')
+    79→  const users = (usersData?.users || []).filter(
+    80→    (u: any) => u.role === 'ProjectManager' || u.role === 'Admin' || u.role === 'Engineer'
+    81→  )
+    82→
+    83→  const [dialogOpen, setDialogOpen] = useState(false)
+    84→  const [editId, setEditId] = useState<string | null>(null)
+    85→  const [form, setForm] = useState<any>({ ...EMPTY_FORM })
+    86→  const [submitting, setSubmitting] = useState(false)
+    87→  const [deleteId, setDeleteId] = useState<string | null>(null)
+    88→
+    89→  const projects = (data?.projects || []).filter((p: any) => {
+    90→    if (!search) return true
+    91→    const q = search.toLowerCase()
+    92→    return (
+    93→      p.name?.toLowerCase().includes(q) ||
+    94→      p.location?.toLowerCase().includes(q) ||
+    95→      p.code?.toLowerCase().includes(q)
+    96→    )
+    97→  })
+    98→
+    99→  function openCreate() {
+   100→    setEditId(null)
+   101→    setForm({ ...EMPTY_FORM })
+   102→    setDialogOpen(true)
+   103→  }
+   104→
+   105→  function openEdit(p: any) {
+   106→    setEditId(p.id)
+   107→    setForm({
+   108→      name: p.name || '',
+   109→      location: p.location || '',
+   110→      client: p.client || '',
+   111→      capacity: p.capacity || '',
+   112→      totalPanels: String(p.totalPanels ?? ''),
+   113→      budget: String(p.budget ?? ''),
+   114→      status: p.status || 'Active',
+   115→      startDate: p.startDate ? toInputDate(p.startDate) : '',
+   116→      endDate: p.endDate ? toInputDate(p.endDate) : '',
+   117→      description: p.description || '',
+   118→      managerId: p.managerId || '',
+   119→    })
+   120→    setDialogOpen(true)
+   121→  }
+   122→
+   123→  async function onSubmit() {
+   124→    if (!form.name || !form.location || !form.startDate || !form.endDate) {
+   125→      toast.error('Please fill in name, location, start date and end date.')
+   126→      return
+   127→    }
+   128→    setSubmitting(true)
+   129→    try {
+   130→      const payload = {
+   131→        ...form,
+   132→        totalPanels: Number(form.totalPanels) || 0,
+   133→        budget: Number(form.budget) || 0,
+   134→      }
+   135→      if (editId) {
+   136→        await apiPut(`/api/projects/${editId}`, payload)
+   137→        toast.success('Project updated')
+   138→      } else {
+   139→        await apiPost('/api/projects', payload)
+   140→        toast.success('Project created')
+   141→      }
+   142→      setDialogOpen(false)
+   143→      refetch()
+   144→    } catch (e: any) {
+   145→      toast.error(e.message || 'Failed to save project')
+   146→    } finally {
+   147→      setSubmitting(false)
+   148→    }
+   149→  }
+   150→
+   151→  async function onDelete() {
+   152→    if (!deleteId) return
+   153→    try {
+   154→      await apiDelete(`/api/projects/${deleteId}`)
+   155→      toast.success('Project deleted')
+   156→      setDeleteId(null)
+   157→      refetch()
+   158→    } catch (e: any) {
+   159→      toast.error(e.message || 'Failed to delete project')
+   160→    }
+   161→  }
+   162→
+   163→  return (
+   164→    <div className="space-y-6">
+   165→      <PageHeader
+   166→        title="Projects"
+   167→        description="Manage all solar construction projects"
+   168→        icon={<FolderKanban className="h-5 w-5" />}
+   169→        actions={
+   170→          canEdit ? (
+   171→            <Button onClick={openCreate} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+   172→              <Plus className="h-4 w-4" /> New Project
+   173→            </Button>
+   174→          ) : null
+   175→        }
+   176→      />
+   177→
+   178→      {/* Filter bar */}
+   179→      <Card className="border-border/60 shadow-sm">
+   180→        <CardContent className="p-4 flex flex-col sm:flex-row gap-3 sm:items-center">
+   181→          <div className="relative flex-1 min-w-0">
+   182→            <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+   183→            <Input
+   184→              placeholder="Search by name, location, code..."
+   185→              value={search}
+   186→              onChange={(e) => setSearch(e.target.value)}
+   187→              className="pl-9"
+   188→            />
+   189→          </div>
+   190→          <div className="flex items-center gap-3 flex-wrap">
+   191→            <div className="flex items-center gap-2">
+   192→              <Filter className="h-4 w-4 text-muted-foreground" />
+   193→              <Select value={statusFilter} onValueChange={setStatusFilter}>
+   194→                <SelectTrigger className="w-[150px]">
+   195→                  <SelectValue placeholder="All statuses" />
+   196→                </SelectTrigger>
+   197→                <SelectContent>
+   198→                  <SelectItem value="all">All Statuses</SelectItem>
+   199→                  {PROJECT_STATUSES.map((s) => (
+   200→                    <SelectItem key={s} value={s}>{PROJECT_STATUS_LABELS[s]}</SelectItem>
+   201→                  ))}
+   202→                </SelectContent>
+   203→              </Select>
+   204→            </div>
+   205→            <div className="flex rounded-md border border-border/60 overflow-hidden">
+   206→              <Button
+   207→                size="sm"
+   208→                variant={view === 'cards' ? 'default' : 'ghost'}
+   209→                className={`rounded-none ${view === 'cards' ? 'bg-emerald-600 text-white hover:bg-emerald-700' : ''}`}
+   210→                onClick={() => setView('cards')}
+   211→              >
+   212→                Cards
+   213→              </Button>
+   214→              <Button
+   215→                size="sm"
+   216→                variant={view === 'table' ? 'default' : 'ghost'}
+   217→                className={`rounded-none ${view === 'table' ? 'bg-emerald-600 text-white hover:bg-emerald-700' : ''}`}
+   218→                onClick={() => setView('table')}
+   219→              >
+   220→                Table
+   221→              </Button>
+   222→            </div>
+   223→          </div>
+   224→        </CardContent>
+   225→      </Card>
+   226→
+   227→      {loading ? (
+   228→        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+   229→          {Array.from({ length: 6 }).map((_, i) => (
+   230→            <Card key={i} className="animate-pulse">
+   231→              <CardContent className="p-5 h-48" />
+   232→            </Card>
+   233→          ))}
+   234→        </div>
+   235→      ) : projects.length === 0 ? (
+   236→        <Card className="border-border/60 shadow-sm">
+   237→          <CardContent className="p-12 flex flex-col items-center justify-center text-center">
+   238→            <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-3">
+   239→              <FolderKanban className="h-6 w-6 text-muted-foreground" />
+   240→            </div>
+   241→            <h3 className="text-sm font-medium">No projects found</h3>
+   242→            <p className="text-xs text-muted-foreground mt-1">
+   243→              Try adjusting your filters or create a new project.
+   244→            </p>
+   245→            {canEdit && (
+   246→              <Button onClick={openCreate} className="mt-4 bg-emerald-600 hover:bg-emerald-700 text-white">
+   247→                <Plus className="h-4 w-4" /> New Project
+   248→              </Button>
+   249→            )}
+   250→          </CardContent>
+   251→        </Card>
+   252→      ) : view === 'cards' ? (
+   253→        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+   254→          {projects.map((p: any) => (
+   255→            <ProjectCard key={p.id} project={p} onOpen={() => openProject(p.id)} />
+   256→          ))}
+   257→        </div>
+   258→      ) : (
+   259→        <Card className="border-border/60 shadow-sm">
+   260→          <CardContent className="p-0">
+   261→            <ScrollArea className="max-h-[600px] ayk-scrollbar">
+   262→              <Table>
+   263→                <TableHeader>
+   264→                  <TableRow>
+   265→                    <TableHead>Code</TableHead>
+   266→                    <TableHead>Name</TableHead>
+   267→                    <TableHead>Location</TableHead>
+   268→                    <TableHead>Status</TableHead>
+   269→                    <TableHead>Progress</TableHead>
+   270→                    <TableHead>Panels</TableHead>
+   271→                    <TableHead>Budget</TableHead>
+   272→                    <TableHead>Manager</TableHead>
+   273→                    <TableHead>End Date</TableHead>
+   274→                    <TableHead className="text-right">Actions</TableHead>
+   275→                  </TableRow>
+   276→                </TableHeader>
+   277→                <TableBody>
+   278→                  {projects.map((p: any) => (
+   279→                    <TableRow
+   280→                      key={p.id}
+   281→                      className="cursor-pointer hover:bg-muted/40"
+   282→                      onClick={() => openProject(p.id)}
+   283→                    >
+   284→                      <TableCell className="font-mono text-xs">{p.code}</TableCell>
+   285→                      <TableCell className="font-medium">{p.name}</TableCell>
+   286→                      <TableCell className="text-muted-foreground">{p.location}</TableCell>
+   287→                      <TableCell><StatusBadge status={p.status} /></TableCell>
+   288→                      <TableCell>
+   289→                        <div className="flex items-center gap-2 min-w-[100px]">
+   290→                          <Progress value={p.overallProgress || 0} className="h-1.5" />
+   291→                          <span className="text-xs font-medium">{p.overallProgress || 0}%</span>
+   292→                        </div>
+   293→                      </TableCell>
+   294→                      <TableCell className="text-xs">
+   295→                        {formatNumber(p.installedPanels)} / {formatNumber(p.totalPanels)}
+   296→                      </TableCell>
+   297→                      <TableCell className="text-xs">{formatCurrency(p.budget)}</TableCell>
+   298→                      <TableCell className="text-xs">{p.manager?.name || '—'}</TableCell>
+   299→                      <TableCell className="text-xs">{formatDate(p.endDate)}</TableCell>
+   300→                      <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+   301→                        <div className="flex items-center justify-end gap-1">
+   302→                          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => openProject(p.id)} title="View">
+   303→                            <ChevronRight className="h-4 w-4" />
+   304→                          </Button>
+   305→                          {canEdit && (
+   306→                            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => openEdit(p)} title="Edit">
+   307→                              <Pencil className="h-4 w-4" />
+   308→                            </Button>
+   309→                          )}
+   310→                          {canDelete && (
+   311→                            <Button
+   312→                              size="icon"
+   313→                              variant="ghost"
+   314→                              className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
+   315→                              onClick={() => setDeleteId(p.id)}
+   316→                              title="Delete"
+   317→                            >
+   318→                              <Trash2 className="h-4 w-4" />
+   319→                            </Button>
+   320→                          )}
+   321→                        </div>
+   322→                      </TableCell>
+   323→                    </TableRow>
+   324→                  ))}
+   325→                </TableBody>
+   326→              </Table>
+   327→            </ScrollArea>
+   328→          </CardContent>
+   329→        </Card>
+   330→      )}
+   331→
+   332→      {/* Create / Edit dialog */}
+   333→      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+   334→        <DialogContent className="sm:max-w-[640px] max-h-[90vh] overflow-y-auto ayk-scrollbar">
+   335→          <DialogHeader>
+   336→            <DialogTitle>{editId ? 'Edit Project' : 'New Project'}</DialogTitle>
+   337→            <DialogDescription>
+   338→              {editId ? 'Update the project details below.' : 'Create a new solar construction project.'}
+   339→            </DialogDescription>
+   340→          </DialogHeader>
+   341→          <ProjectFormFields form={form} setForm={setForm} users={users} />
+   342→          <DialogFooter>
+   343→            <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
+   344→            <Button
+   345→              onClick={onSubmit}
+   346→              disabled={submitting}
+   347→              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+   348→            >
+   349→              {submitting ? 'Saving...' : editId ? 'Save Changes' : 'Create Project'}
+   350→            </Button>
+   351→          </DialogFooter>
+   352→        </DialogContent>
+   353→      </Dialog>
+   354→
+   355→      {/* Delete confirm */}
+   356→      <AlertDialog open={!!deleteId} onOpenChange={(o) => !o && setDeleteId(null)}>
+   357→        <AlertDialogContent>
+   358→          <AlertDialogHeader>
+   359→            <AlertDialogTitle>Delete project?</AlertDialogTitle>
+   360→            <AlertDialogDescription>
+   361→              This will permanently delete the project and all related stages, progress, tasks,
+   362→              expenses and documents. This action cannot be undone.
+   363→            </AlertDialogDescription>
+   364→          </AlertDialogHeader>
+   365→          <AlertDialogFooter>
+   366→            <AlertDialogCancel>Cancel</AlertDialogCancel>
+   367→            <AlertDialogAction
+   368→              className="bg-red-600 hover:bg-red-700 text-white"
+   369→              onClick={onDelete}
+   370→            >
+   371→              Delete
+   372→            </AlertDialogAction>
+   373→          </AlertDialogFooter>
+   374→        </AlertDialogContent>
+   375→      </AlertDialog>
+   376→    </div>
+   377→  )
+   378→}
+   379→
+   380→function ProjectCard({ project, onOpen }: { project: any; onOpen: () => void }) {
+   381→  const installPct =
+   382→    project.totalPanels > 0
+   383→      ? Math.round((project.installedPanels / project.totalPanels) * 1000) / 10
+   384→      : 0
+   385→  const budgetPct =
+   386→    project.budget > 0 ? Math.min(100, (project.actualCost / project.budget) * 100) : 0
+   387→
+   388→  return (
+   389→    <Card
+   390→      className="overflow-hidden hover:shadow-md transition-shadow cursor-pointer group border-border/60"
+   391→      onClick={onOpen}
+   392→    >
+   393→      <CardContent className="p-5">
+   394→        <div className="flex items-start justify-between gap-2 mb-3">
+   395→          <div className="min-w-0">
+   396→            <div className="font-mono text-[10px] text-muted-foreground mb-0.5">{project.code}</div>
+   397→            <h3 className="font-semibold text-slate-900 truncate group-hover:text-emerald-600 transition">
+   398→              {project.name}
+   399→            </h3>
+   400→            <div className="flex items-center gap-1 text-xs text-slate-500 mt-0.5">
+   401→              <MapPin className="h-3 w-3" /> {project.location}
+   402→            </div>
+   403→          </div>
+   404→          <StatusBadge status={project.status} />
+   405→        </div>
+   406→
+   407→        <div className="space-y-3">
+   408→          <div>
+   409→            <div className="flex items-center justify-between text-xs mb-1">
+   410→              <span className="text-slate-600">Overall Progress</span>
+   411→              <span className="font-semibold text-slate-900">{project.overallProgress || 0}%</span>
+   412→            </div>
+   413→            <Progress value={project.overallProgress || 0} className="h-2" />
+   414→          </div>
+   415→
+   416→          <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
+   417→            <div>
+   418→              <div className="text-[10px] text-slate-500 uppercase tracking-wide">Panels</div>
+   419→              <div className="text-sm font-semibold text-slate-900">
+   420→                {formatNumber(project.installedPanels)} / {formatNumber(project.totalPanels)}
+   421→              </div>
+   422→              <Progress value={installPct} className="h-1.5 mt-1" />
+   423→            </div>
+   424→            <div>
+   425→              <div className="text-[10px] text-slate-500 uppercase tracking-wide">Budget</div>
+   426→              <div className="text-sm font-semibold text-slate-900">
+   427→                {formatCurrency(project.actualCost)} / {formatCurrency(project.budget)}
+   428→              </div>
+   429→              <Progress value={budgetPct} className="h-1.5 mt-1" />
+   430→            </div>
+   431→          </div>
+   432→
+   433→          <div className="flex items-center justify-between text-xs text-slate-500 pt-2 border-t border-slate-100">
+   434→            <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> {formatDate(project.startDate)}</span>
+   435→            <span>→</span>
+   436→            <span className="flex items-center gap-1">{formatDate(project.endDate)}</span>
+   437→          </div>
+   438→        </div>
+   439→      </CardContent>
+   440→    </Card>
+   441→  )
+   442→}
+   443→
+   444→// ============================================================
+   445→// Shared form fields (used by Create + Edit dialogs)
+   446→// ============================================================
+   447→function ProjectFormFields({
+   448→  form, setForm, users,
+   449→}: {
+   450→  form: any
+   451→  setForm: (f: any) => void
+   452→  users: any[]
+   453→}) {
+   454→  return (
+   455→    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   456→      <Field className="sm:col-span-2" label="Project Name *">
+   457→        <Input
+   458→          value={form.name}
+   459→          onChange={(e) => setForm({ ...form, name: e.target.value })}
+   460→          placeholder="e.g. Tuas Solar Farm Phase 2"
+   461→        />
+   462→      </Field>
+   463→      <Field label="Location *">
+   464→        <Input
+   465→          value={form.location}
+   466→          onChange={(e) => setForm({ ...form, location: e.target.value })}
+   467→          placeholder="e.g. Tuas, Singapore"
+   468→        />
+   469→      </Field>
+   470→      <Field label="Client">
+   471→        <Input
+   472→          value={form.client}
+   473→          onChange={(e) => setForm({ ...form, client: e.target.value })}
+   474→          placeholder="e.g. SPS Group"
+   475→        />
+   476→      </Field>
+   477→      <Field label="Capacity">
+   478→        <Input
+   479→          value={form.capacity}
+   480→          onChange={(e) => setForm({ ...form, capacity: e.target.value })}
+   481→          placeholder="e.g. 3.5 MWp"
+   482→        />
+   483→      </Field>
+   484→      <Field label="Total Panels">
+   485→        <Input
+   486→          type="number"
+   487→          value={form.totalPanels}
+   488→          onChange={(e) => setForm({ ...form, totalPanels: e.target.value })}
+   489→          placeholder="e.g. 6500"
+   490→        />
+   491→      </Field>
+   492→      <Field label="Budget (S$)">
+   493→        <Input
+   494→          type="number"
+   495→          value={form.budget}
+   496→          onChange={(e) => setForm({ ...form, budget: e.target.value })}
+   497→          placeholder="e.g. 1200000"
+   498→        />
+   499→      </Field>
+   500→      <Field label="Status">
+   501→        <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
+   502→          <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+   503→          <SelectContent>
+   504→            {PROJECT_STATUSES.map((s) => (
+   505→              <SelectItem key={s} value={s}>{PROJECT_STATUS_LABELS[s]}</SelectItem>
+   506→            ))}
+   507→          </SelectContent>
+   508→        </Select>
+   509→      </Field>
+   510→      <Field label="Project Manager">
+   511→        <Select
+   512→          value={form.managerId || 'unassigned'}
+   513→          onValueChange={(v) => setForm({ ...form, managerId: v === 'unassigned' ? '' : v })}
+   514→        >
+   515→          <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+   516→          <SelectContent>
+   517→            <SelectItem value="unassigned">— Unassigned —</SelectItem>
+   518→            {users.map((u: any) => (
+   519→              <SelectItem key={u.id} value={u.id}>{u.name} · {u.role}</SelectItem>
+   520→            ))}
+   521→          </SelectContent>
+   522→        </Select>
+   523→      </Field>
+   524→      <Field label="Start Date *">
+   525→        <Input
+   526→          type="date"
+   527→          value={form.startDate}
+   528→          onChange={(e) => setForm({ ...form, startDate: e.target.value })}
+   529→        />
+   530→      </Field>
+   531→      <Field label="End Date *">
+   532→        <Input
+   533→          type="date"
+   534→          value={form.endDate}
+   535→          onChange={(e) => setForm({ ...form, endDate: e.target.value })}
+   536→        />
+   537→      </Field>
+   538→      <Field label="Description" className="sm:col-span-2">
+   539→        <Textarea
+   540→          value={form.description}
+   541→          onChange={(e) => setForm({ ...form, description: e.target.value })}
+   542→          rows={3}
+   543→          placeholder="Project description, scope, key notes..."
+   544→        />
+   545→      </Field>
+   546→    </div>
+   547→  )
+   548→}
+   549→
+   550→function Field({
+   551→  label, children, className,
+   552→}: {
+   553→  label: string
+   554→  children: React.ReactNode
+   555→  className?: string
+   556→}) {
+   557→  return (
+   558→    <div className={className}>
+   559→      <Label className="text-xs font-medium mb-1.5 block">{label}</Label>
+   560→      {children}
+   561→    </div>
+   562→  )
+   563→}
+   564→
+   565→// ============================================================
+   566→// DETAIL MODE
+   567→// ============================================================
+   568→function ProjectDetail() {
+   569→  const { detailProjectId, closeProject, user, setNav } = useAppStore()
+   570→  const canEdit = user?.role === 'Admin' || user?.role === 'ProjectManager'
+   571→
+   572→  const { data, loading, refetch } = useFetch<any>(`/api/projects/${detailProjectId}`)
+   573→  const project = data?.project
+   574→
+   575→  const { data: usersData } = useFetch<any>('/api/users')
+   576→  const users = (usersData?.users || []).filter(
+   577→    (u: any) => u.role === 'ProjectManager' || u.role === 'Admin' || u.role === 'Engineer'
+   578→  )
+   579→
+   580→  const [editOpen, setEditOpen] = useState(false)
+   581→  const [editForm, setEditForm] = useState<any>(null)
+   582→  const [savingEdit, setSavingEdit] = useState(false)
+   583→
+   584→  function openEdit() {
+   585→    if (!project) return
+   586→    setEditForm({
+   587→      name: project.name || '',
+   588→      location: project.location || '',
+   589→      client: project.client || '',
+   590→      capacity: project.capacity || '',
+   591→      totalPanels: String(project.totalPanels ?? ''),
+   592→      budget: String(project.budget ?? ''),
+   593→      status: project.status || 'Active',
+   594→      startDate: project.startDate ? toInputDate(project.startDate) : '',
+   595→      endDate: project.endDate ? toInputDate(project.endDate) : '',
+   596→      description: project.description || '',
+   597→      managerId: project.managerId || '',
+   598→    })
+   599→    setEditOpen(true)
+   600→  }
+   601→
+   602→  async function onSaveEdit() {
+   603→    if (!detailProjectId || !editForm) return
+   604→    setSavingEdit(true)
+   605→    try {
+   606→      await apiPut(`/api/projects/${detailProjectId}`, {
+   607→        ...editForm,
+   608→        totalPanels: Number(editForm.totalPanels) || 0,
+   609→        budget: Number(editForm.budget) || 0,
+   610→      })
+   611→      toast.success('Project updated')
+   612→      setEditOpen(false)
+   613→      refetch()
+   614→    } catch (e: any) {
+   615→      toast.error(e.message || 'Failed to update project')
+   616→    } finally {
+   617→      setSavingEdit(false)
+   618→    }
+   619→  }
+   620→
+   621→  if (loading || !project) {
+   622→    return (
+   623→      <div className="space-y-6">
+   624→        <div className="flex items-center gap-2">
+   625→          <Button variant="ghost" size="sm" onClick={closeProject}>
+   626→            <ArrowLeft className="h-4 w-4" /> Back
+   627→          </Button>
+   628→        </div>
+   629→        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+   630→          {Array.from({ length: 9 }).map((_, i) => (
+   631→            <Card key={i} className="animate-pulse"><CardContent className="p-4 h-28" /></Card>
+   632→          ))}
+   633→        </div>
+   634→        <Card className="animate-pulse"><CardContent className="p-5 h-72" /></Card>
+   635→      </div>
+   636→    )
+   637→  }
+   638→
+   639→  const variance = (project.overallProgress || 0) - (project.plannedProgress || 0)
+   640→  const remaining = (project.budget || 0) - (project.actualCost || 0)
+   641→
+   642→  return (
+   643→    <div className="space-y-6">
+   644→      <PageHeader
+   645→        title={project.name}
+   646→        description={`${project.code} · ${project.location}${project.client ? ' · ' + project.client : ''}`}
+   647→        icon={<FolderKanban className="h-5 w-5" />}
+   648→        actions={
+   649→          <div className="flex items-center gap-2 flex-wrap">
+   650→            <StatusBadge status={project.status} />
+   651→            <Button variant="outline" onClick={closeProject}>
+   652→              <ArrowLeft className="h-4 w-4" /> Back
+   653→            </Button>
+   654→            {canEdit && (
+   655→              <Button onClick={openEdit} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+   656→                <Pencil className="h-4 w-4" /> Edit
+   657→              </Button>
+   658→            )}
+   659→          </div>
+   660→        }
+   661→      />
+   662→
+   663→      {/* Description */}
+   664→      {project.description && (
+   665→        <Card className="border-border/60 shadow-sm">
+   666→          <CardContent className="p-4 text-sm text-muted-foreground whitespace-pre-line">
+   667→            {project.description}
+   668→          </CardContent>
+   669→        </Card>
+   670→      )}
+   671→
+   672→      {/* Stat cards */}
+   673→      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+   674→        <StatCard title="Total Panels" value={formatNumber(project.totalPanels)} subtitle={project.capacity || ''} icon={<Sun className="h-5 w-5" />} accent="orange" />
+   675→        <StatCard title="Installed" value={formatNumber(project.installedPanels)} subtitle={`${project.installationPct || 0}% complete`} icon={<CheckCircle2 className="h-5 w-5" />} accent="green" />
+   676→        <StatCard title="Installation %" value={`${project.installationPct || 0}%`} icon={<TrendingUp className="h-5 w-5" />} accent="green" />
+   677→        <StatCard title="Overall Progress" value={`${project.overallProgress || 0}%`} subtitle={`Planned ${project.plannedProgress || 0}%`} icon={<TrendingUp className="h-5 w-5" />} accent="blue" />
+   678→        <StatCard title="Planned Progress" value={`${project.plannedProgress || 0}%`} icon={<Clock className="h-5 w-5" />} accent="blue" />
+   679→        <StatCard
+   680→          title="Variance"
+   681→          value={`${variance >= 0 ? '+' : ''}${variance.toFixed(1)}%`}
+   682→          subtitle={variance >= 0 ? 'Ahead of schedule' : 'Behind schedule'}
+   683→          icon={<AlertTriangle className="h-5 w-5" />}
+   684→          accent={variance >= 0 ? 'green' : 'red'}
+   685→        />
+   686→        <StatCard title="Budget" value={formatCurrency(project.budget || 0)} icon={<DollarSign className="h-5 w-5" />} accent="purple" />
+   687→        <StatCard title="Actual Cost" value={formatCurrency(project.actualCost || 0)} icon={<DollarSign className="h-5 w-5" />} accent="orange" />
+   688→        <StatCard
+   689→          title="Remaining"
+   690→          value={formatCurrency(remaining)}
+   691→          subtitle={remaining >= 0 ? 'Under budget' : 'Over budget'}
+   692→          icon={<DollarSign className="h-5 w-5" />}
+   693→          accent={remaining >= 0 ? 'green' : 'red'}
+   694→        />
+   695→      </div>
+   696→
+   697→      {/* S-Curve chart */}
+   698→      <Card className="border-border/60 shadow-sm">
+   699→        <CardHeader className="pb-2">
+   700→          <CardTitle className="text-base font-semibold">
+   701→            S-Curve — Cumulative Panels (Planned vs Actual)
+   702→          </CardTitle>
+   703→          <CardDescription className="text-xs">
+   704→            Daily progress tracked against ideal planned trajectory
+   705→          </CardDescription>
+   706→        </CardHeader>
+   707→        <CardContent>
+   708→          {project.sCurve && project.sCurve.length > 0 ? (
+   709→            <ResponsiveContainer width="100%" height={300}>
+   710→              <AreaChart data={project.sCurve} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
+   711→                <defs>
+   712→                  <linearGradient id="gActual" x1="0" y1="0" x2="0" y2="1">
+   713→                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.4} />
+   714→                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+   715→                  </linearGradient>
+   716→                  <linearGradient id="gPlanned" x1="0" y1="0" x2="0" y2="1">
+   717→                    <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.3} />
+   718→                    <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0} />
+   719→                  </linearGradient>
+   720→                </defs>
+   721→                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+   722→                <XAxis
+   723→                  dataKey="date"
+   724→                  tickFormatter={(d) => new Date(d).getDate() + '/' + (new Date(d).getMonth() + 1)}
+   725→                  tick={{ fontSize: 11, fill: '#64748b' }}
+   726→                />
+   727→                <YAxis
+   728→                  tick={{ fontSize: 11, fill: '#64748b' }}
+   729→                  tickFormatter={(v: any) => formatNumber(v)}
+   730→                />
+   731→                <RTooltip
+   732→                  contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}
+   733→                  labelFormatter={(l) => formatDate(l as string)}
+   734→                  formatter={(v: any) => formatNumber(v)}
+   735→                />
+   736→                <Legend iconType="circle" wrapperStyle={{ fontSize: 11 }} />
+   737→                <Area type="monotone" dataKey="planned" stroke="#0ea5e9" strokeWidth={2} fill="url(#gPlanned)" name="Planned" />
+   738→                <Area type="monotone" dataKey="actual" stroke="#10b981" strokeWidth={2.5} fill="url(#gActual)" name="Actual" />
+   739→              </AreaChart>
+   740→            </ResponsiveContainer>
+   741→          ) : (
+   742→            <EmptyState
+   743→              icon={<TrendingUp className="h-5 w-5" />}
+   744→              title="No progress data yet"
+   745→              desc="Daily progress submissions will populate the S-curve chart."
+   746→            />
+   747→          )}
+   748→        </CardContent>
+   749→      </Card>
+   750→
+   751→      {/* Stages card */}
+   752→      <StagesCard project={project} canEdit={canEdit} onSaved={refetch} />
+   753→
+   754→      {/* Tabbed detail sections */}
+   755→      <Tabs defaultValue="progress" className="space-y-0">
+   756→        <TabsList className="flex w-full overflow-x-auto">
+   757→          <TabsTrigger value="progress">Daily Progress</TabsTrigger>
+   758→          <TabsTrigger value="tasks">Tasks</TabsTrigger>
+   759→          <TabsTrigger value="expenses">Expenses</TabsTrigger>
+   760→          <TabsTrigger value="documents">Documents</TabsTrigger>
+   761→          <TabsTrigger value="materials">Material Transactions</TabsTrigger>
+   762→        </TabsList>
+   763→
+   764→        {/* Daily Progress */}
+   765→        <TabsContent value="progress">
+   766→          <Card className="border-border/60 shadow-sm">
+   767→            <CardHeader className="pb-3">
+   768→              <CardTitle className="text-base font-semibold flex items-center gap-2">
+   769→                <Sun className="h-4 w-4" /> Daily Progress
+   770→              </CardTitle>
+   771→              <CardDescription className="text-xs">
+   772→                Most recent site entries ({project.dailyProgress?.length || 0})
+   773→              </CardDescription>
+   774→            </CardHeader>
+   775→            <CardContent>
+   776→              {project.dailyProgress && project.dailyProgress.length > 0 ? (
+   777→                <ScrollArea className="max-h-96 ayk-scrollbar">
+   778→                  <Table>
+   779→                    <TableHeader>
+   780→                      <TableRow>
+   781→                        <TableHead>Date</TableHead>
+   782→                        <TableHead>Installed</TableHead>
+   783→                        <TableHead>Total</TableHead>
+   784→                        <TableHead>Man Hrs</TableHead>
+   785→                        <TableHead>Workers</TableHead>
+   786→                        <TableHead>Site</TableHead>
+   787→                        <TableHead>Submitted By</TableHead>
+   788→                        <TableHead>Remarks</TableHead>
+   789→                      </TableRow>
+   790→                    </TableHeader>
+   791→                    <TableBody>
+   792→                      {project.dailyProgress.map((d: any) => (
+   793→                        <TableRow key={d.id}>
+   794→                          <TableCell className="text-xs">{formatDate(d.date)}</TableCell>
+   795→                          <TableCell className="text-xs font-medium">{formatNumber(d.installedPanels)}</TableCell>
+   796→                          <TableCell className="text-xs">{formatNumber(d.totalInstalled)}</TableCell>
+   797→                          <TableCell className="text-xs">{d.manHours ?? '—'}</TableCell>
+   798→                          <TableCell className="text-xs">{d.workers ?? '—'}</TableCell>
+   799→                          <TableCell><StatusBadge status={d.siteStatus || 'Normal'} /></TableCell>
+   800→                          <TableCell className="text-xs">{d.submittedBy?.name || '—'}</TableCell>
+   801→                          <TableCell className="text-xs text-muted-foreground max-w-[220px] truncate">
+   802→                            {d.remarks || '—'}
+   803→                          </TableCell>
+   804→                        </TableRow>
+   805→                      ))}
+   806→                    </TableBody>
+   807→                  </Table>
+   808→                </ScrollArea>
+   809→              ) : (
+   810→                <EmptyState icon={<Sun className="h-5 w-5" />} title="No progress entries" desc="Daily progress submissions will appear here." />
+   811→              )}
+   812→            </CardContent>
+   813→          </Card>
+   814→        </TabsContent>
+   815→
+   816→        {/* Tasks */}
+   817→        <TabsContent value="tasks">
+   818→          <Card className="border-border/60 shadow-sm">
+   819→            <CardHeader className="pb-3 flex flex-row items-center justify-between gap-3">
+   820→              <div>
+   821→                <CardTitle className="text-base font-semibold flex items-center gap-2">
+   822→                  <CheckCircle2 className="h-4 w-4" /> Tasks
+   823→                </CardTitle>
+   824→                <CardDescription className="text-xs">
+   825→                  {project.tasks?.length || 0} task(s) for this project
+   826→                </CardDescription>
+   827→              </div>
+   828→              <Button size="sm" variant="outline" onClick={() => setNav('tasks')}>
+   829→                Open Tasks <ChevronRight className="h-4 w-4" />
+   830→              </Button>
+   831→            </CardHeader>
+   832→            <CardContent>
+   833→              {project.tasks && project.tasks.length > 0 ? (
+   834→                <ScrollArea className="max-h-96 ayk-scrollbar">
+   835→                  <Table>
+   836→                    <TableHeader>
+   837→                      <TableRow>
+   838→                        <TableHead>Title</TableHead>
+   839→                        <TableHead>Priority</TableHead>
+   840→                        <TableHead>Status</TableHead>
+   841→                        <TableHead>Progress</TableHead>
+   842→                        <TableHead>Due Date</TableHead>
+   843→                        <TableHead>Assigned To</TableHead>
+   844→                      </TableRow>
+   845→                    </TableHeader>
+   846→                    <TableBody>
+   847→                      {project.tasks.map((t: any) => (
+   848→                        <TableRow key={t.id}>
+   849→                          <TableCell className="font-medium text-sm">{t.title}</TableCell>
+   850→                          <TableCell><PriorityBadge priority={t.priority} /></TableCell>
+   851→                          <TableCell><StatusBadge status={t.status} /></TableCell>
+   852→                          <TableCell>
+   853→                            <div className="flex items-center gap-2 min-w-[100px]">
+   854→                              <Progress value={t.progress || 0} className="h-1.5" />
+   855→                              <span className="text-xs font-medium">{t.progress || 0}%</span>
+   856→                            </div>
+   857→                          </TableCell>
+   858→                          <TableCell className="text-xs">{t.dueDate ? formatDate(t.dueDate) : '—'}</TableCell>
+   859→                          <TableCell className="text-xs">{t.assignedTo?.name || t.assignedToName || '—'}</TableCell>
+   860→                        </TableRow>
+   861→                      ))}
+   862→                    </TableBody>
+   863→                  </Table>
+   864→                </ScrollArea>
+   865→              ) : (
+   866→                <EmptyState icon={<CheckCircle2 className="h-5 w-5" />} title="No tasks" desc="Tasks assigned to this project will appear here." />
+   867→              )}
+   868→            </CardContent>
+   869→          </Card>
+   870→        </TabsContent>
+   871→
+   872→        {/* Expenses */}
+   873→        <TabsContent value="expenses">
+   874→          <Card className="border-border/60 shadow-sm">
+   875→            <CardHeader className="pb-3 flex flex-row items-center justify-between gap-3">
+   876→              <div>
+   877→                <CardTitle className="text-base font-semibold flex items-center gap-2">
+   878→                  <DollarSign className="h-4 w-4" /> Expenses
+   879→                </CardTitle>
+   880→                <CardDescription className="text-xs">
+   881→                  {project.expenses?.length || 0} expense(s)
+   882→                </CardDescription>
+   883→              </div>
+   884→              <Button size="sm" variant="outline" onClick={() => setNav('expenses')}>
+   885→                Open Expenses <ChevronRight className="h-4 w-4" />
+   886→              </Button>
+   887→            </CardHeader>
+   888→            <CardContent>
+   889→              {project.expenses && project.expenses.length > 0 ? (
+   890→                <ScrollArea className="max-h-96 ayk-scrollbar">
+   891→                  <Table>
+   892→                    <TableHeader>
+   893→                      <TableRow>
+   894→                        <TableHead>Date</TableHead>
+   895→                        <TableHead>Category</TableHead>
+   896→                        <TableHead>Description</TableHead>
+   897→                        <TableHead className="text-right">Amount</TableHead>
+   898→                        <TableHead>Approval</TableHead>
+   899→                        <TableHead>Paid By</TableHead>
+   900→                      </TableRow>
+   901→                    </TableHeader>
+   902→                    <TableBody>
+   903→                      {project.expenses.map((e: any) => (
+   904→                        <TableRow key={e.id}>
+   905→                          <TableCell className="text-xs">{formatDate(e.date)}</TableCell>
+   906→                          <TableCell className="text-xs">{e.category}</TableCell>
+   907→                          <TableCell className="text-xs max-w-[240px] truncate">{e.description}</TableCell>
+   908→                          <TableCell className="text-xs font-semibold text-right">{formatCurrency(e.amount)}</TableCell>
+   909→                          <TableCell><StatusBadge status={e.approvalStatus || 'Pending'} /></TableCell>
+   910→                          <TableCell className="text-xs">{e.paidBy || '—'}</TableCell>
+   911→                        </TableRow>
+   912→                      ))}
+   913→                    </TableBody>
+   914→                  </Table>
+   915→                </ScrollArea>
+   916→              ) : (
+   917→                <EmptyState icon={<DollarSign className="h-5 w-5" />} title="No expenses" desc="Expenses logged to this project will appear here." />
+   918→              )}
+   919→            </CardContent>
+   920→          </Card>
+   921→        </TabsContent>
+   922→
+   923→        {/* Documents */}
+   924→        <TabsContent value="documents">
+   925→          <Card className="border-border/60 shadow-sm">
+   926→            <CardHeader className="pb-3 flex flex-row items-center justify-between gap-3">
+   927→              <div>
+   928→                <CardTitle className="text-base font-semibold flex items-center gap-2">
+   929→                  <FileText className="h-4 w-4" /> Documents
+   930→                </CardTitle>
+   931→                <CardDescription className="text-xs">
+   932→                  {project.documents?.length || 0} document(s)
+   933→                </CardDescription>
+   934→              </div>
+   935→              <Button size="sm" variant="outline" onClick={() => setNav('documents')}>
+   936→                Open Documents <ChevronRight className="h-4 w-4" />
+   937→              </Button>
+   938→            </CardHeader>
+   939→            <CardContent>
+   940→              {project.documents && project.documents.length > 0 ? (
+   941→                <ScrollArea className="max-h-96 ayk-scrollbar">
+   942→                  <Table>
+   943→                    <TableHeader>
+   944→                      <TableRow>
+   945→                        <TableHead>Name</TableHead>
+   946→                        <TableHead>Category</TableHead>
+   947→                        <TableHead>Type</TableHead>
+   948→                        <TableHead>Uploaded By</TableHead>
+   949→                        <TableHead>Uploaded At</TableHead>
+   950→                      </TableRow>
+   951→                    </TableHeader>
+   952→                    <TableBody>
+   953→                      {project.documents.map((d: any) => (
+   954→                        <TableRow key={d.id}>
+   955→                          <TableCell className="text-sm font-medium">
+   956→                            <span className="inline-flex items-center gap-2">
+   957→                              <FileText className="h-4 w-4 text-muted-foreground" /> {d.name}
+   958→                            </span>
+   959→                          </TableCell>
+   960→                          <TableCell className="text-xs">{d.category}</TableCell>
+   961→                          <TableCell>
+   962→                            <Badge variant="outline" className="text-xs uppercase">{d.fileType || 'FILE'}</Badge>
+   963→                          </TableCell>
+   964→                          <TableCell className="text-xs">{d.uploadedByName || '—'}</TableCell>
+   965→                          <TableCell className="text-xs">{d.createdAt ? formatDate(d.createdAt) : '—'}</TableCell>
+   966→                        </TableRow>
+   967→                      ))}
+   968→                    </TableBody>
+   969→                  </Table>
+   970→                </ScrollArea>
+   971→              ) : (
+   972→                <EmptyState icon={<FileText className="h-5 w-5" />} title="No documents" desc="Project documents will appear here." />
+   973→              )}
+   974→            </CardContent>
+   975→          </Card>
+   976→        </TabsContent>
+   977→
+   978→        {/* Material Transactions */}
+   979→        <TabsContent value="materials">
+   980→          <Card className="border-border/60 shadow-sm">
+   981→            <CardHeader className="pb-3">
+   982→              <CardTitle className="text-base font-semibold flex items-center gap-2">
+   983→                <Package className="h-4 w-4" /> Material Transactions
+   984→              </CardTitle>
+   985→              <CardDescription className="text-xs">
+   986→                {project.materialTransactions?.length || 0} transaction(s)
+   987→              </CardDescription>
+   988→            </CardHeader>
+   989→            <CardContent>
+   990→              {project.materialTransactions && project.materialTransactions.length > 0 ? (
+   991→                <ScrollArea className="max-h-96 ayk-scrollbar">
+   992→                  <Table>
+   993→                    <TableHeader>
+   994→                      <TableRow>
+   995→                        <TableHead>Material</TableHead>
+   996→                        <TableHead>Type</TableHead>
+   997→                        <TableHead className="text-right">Qty</TableHead>
+   998→                        <TableHead>Date</TableHead>
+   999→                        <TableHead>Remarks</TableHead>
+  1000→                      </TableRow>
+  1001→                    </TableHeader>
+  1002→                    <TableBody>
+  1003→                      {project.materialTransactions.map((m: any) => (
+  1004→                        <TableRow key={m.id}>
+  1005→                          <TableCell className="text-sm font-medium">{m.material?.name || '—'}</TableCell>
+  1006→                          <TableCell>
+  1007→                            <Badge
+  1008→                              variant="outline"
+  1009→                              className={
+  1010→                                m.type === 'Add'
+  1011→                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+  1012→                                  : m.type === 'Issue'
+  1013→                                  ? 'bg-amber-50 text-amber-700 border-amber-200'
+  1014→                                  : 'bg-sky-50 text-sky-700 border-sky-200'
+  1015→                              }
+  1016→                            >
+  1017→                              {m.type}
+  1018→                            </Badge>
+  1019→                          </TableCell>
+  1020→                          <TableCell className="text-xs font-semibold text-right">{formatNumber(m.qty)}</TableCell>
+  1021→                          <TableCell className="text-xs">{formatDate(m.date)}</TableCell>
+  1022→                          <TableCell className="text-xs text-muted-foreground max-w-[220px] truncate">
+  1023→                            {m.remarks || '—'}
+  1024→                          </TableCell>
+  1025→                        </TableRow>
+  1026→                      ))}
+  1027→                    </TableBody>
+  1028→                  </Table>
+  1029→                </ScrollArea>
+  1030→              ) : (
+  1031→                <EmptyState icon={<Package className="h-5 w-5" />} title="No material transactions" desc="Material issues and receipts will appear here." />
+  1032→              )}
+  1033→            </CardContent>
+  1034→          </Card>
+  1035→        </TabsContent>
+  1036→      </Tabs>
+  1037→
+  1038→      {/* Edit dialog */}
+  1039→      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+  1040→        <DialogContent className="sm:max-w-[640px] max-h-[90vh] overflow-y-auto ayk-scrollbar">
+  1041→          <DialogHeader>
+  1042→            <DialogTitle>Edit Project</DialogTitle>
+  1043→            <DialogDescription>Update the project details below.</DialogDescription>
+  1044→          </DialogHeader>
+  1045→          {editForm && (
+  1046→            <ProjectFormFields form={editForm} setForm={setEditForm} users={users} />
+  1047→          )}
+  1048→          <DialogFooter>
+  1049→            <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+  1050→            <Button
+  1051→              onClick={onSaveEdit}
+  1052→              disabled={savingEdit}
+  1053→              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+  1054→            >
+  1055→              {savingEdit ? 'Saving...' : 'Save Changes'}
+  1056→            </Button>
+  1057→          </DialogFooter>
+  1058→        </DialogContent>
+  1059→      </Dialog>
+  1060→    </div>
+  1061→  )
+  1062→}
+  1063→
+  1064→// ============================================================
+  1065→// STAGES CARD with inline editing
+  1066→// ============================================================
+  1067→function StagesCard({
+  1068→  project, canEdit, onSaved,
+  1069→}: {
+  1070→  project: any
+  1071→  canEdit: boolean
+  1072→  onSaved: () => void
+  1073→}) {
+  1074→  const [stages, setStages] = useState<any[]>([])
+  1075→  const [saving, setSaving] = useState(false)
+  1076→
+  1077→  useEffect(() => {
+  1078→    if (project.stages) {
+  1079→      setStages(project.stages.map((s: any) => ({ ...s })))
+  1080→    }
+  1081→  }, [project.stages])
+  1082→
+  1083→  function updateStage(idx: number, field: string, value: any) {
+  1084→    setStages((prev) =>
+  1085→      prev.map((s, i) => (i === idx ? { ...s, [field]: value } : s))
+  1086→    )
+  1087→  }
+  1088→
+  1089→  async function save() {
+  1090→    setSaving(true)
+  1091→    try {
+  1092→      await apiPut(`/api/projects/${project.id}/stages`, {
+  1093→        stages: stages.map((s) => ({
+  1094→          id: s.id,
+  1095→          name: s.name,
+  1096→          plannedPct: Number(s.plannedPct) || 0,
+  1097→          actualPct: Number(s.actualPct) || 0,
+  1098→          weight: Number(s.weight) || 0,
+  1099→          status: s.status,
+  1100→          startDate: s.startDate,
+  1101→          endDate: s.endDate,
+  1102→        })),
+  1103→      })
+  1104→      toast.success('Stages saved')
+  1105→      onSaved()
+  1106→    } catch (e: any) {
+  1107→      toast.error(e.message || 'Failed to save stages')
+  1108→    } finally {
+  1109→      setSaving(false)
+  1110→    }
+  1111→  }
+  1112→
+  1113→  return (
+  1114→    <Card className="border-border/60 shadow-sm">
+  1115→      <CardHeader className="pb-3 flex flex-row items-center justify-between gap-3">
+  1116→        <div>
+  1117→          <CardTitle className="text-base font-semibold">Project Stages</CardTitle>
+  1118→          <CardDescription className="text-xs">Weighted progress across {stages.length || 6} stages</CardDescription>
+  1119→        </div>
+  1120→        {canEdit && (
+  1121→          <Button
+  1122→            size="sm"
+  1123→            onClick={save}
+  1124→            disabled={saving}
+  1125→            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+  1126→          >
+  1127→            {saving ? 'Saving...' : 'Save Stages'}
+  1128→          </Button>
+  1129→        )}
+  1130→      </CardHeader>
+  1131→      <CardContent>
+  1132→        {stages.length === 0 ? (
+  1133→          <EmptyState
+  1134→            icon={<FolderKanban className="h-5 w-5" />}
+  1135→            title="No stages defined"
+  1136→            desc="Stages are created when the project is added."
+  1137→          />
+  1138→        ) : (
+  1139→          <div className="overflow-x-auto">
+  1140→            <Table>
+  1141→              <TableHeader>
+  1142→                <TableRow>
+  1143→                  <TableHead>Stage</TableHead>
+  1144→                  <TableHead>Planned %</TableHead>
+  1145→                  <TableHead>Actual %</TableHead>
+  1146→                  <TableHead className="min-w-[140px]">Progress</TableHead>
+  1147→                  <TableHead>Weight</TableHead>
+  1148→                  <TableHead>Status</TableHead>
+  1149→                  <TableHead>Start</TableHead>
+  1150→                  <TableHead>End</TableHead>
+  1151→                </TableRow>
+  1152→              </TableHeader>
+  1153→              <TableBody>
+  1154→                {stages.map((s, i) => (
+  1155→                  <TableRow key={s.id}>
+  1156→                    <TableCell className="font-medium text-sm">{s.name}</TableCell>
+  1157→                    <TableCell className="text-xs">{s.plannedPct}%</TableCell>
+  1158→                    <TableCell>
+  1159→                      {canEdit ? (
+  1160→                        <Input
+  1161→                          type="number"
+  1162→                          min={0}
+  1163→                          max={100}
+  1164→                          value={s.actualPct}
+  1165→                          onChange={(e) => updateStage(i, 'actualPct', e.target.value)}
+  1166→                          className="h-8 w-20 text-xs"
+  1167→                        />
+  1168→                      ) : (
+  1169→                        <span className="text-xs">{s.actualPct}%</span>
+  1170→                      )}
+  1171→                    </TableCell>
+  1172→                    <TableCell>
+  1173→                      <Progress value={Number(s.actualPct) || 0} className="h-2" />
+  1174→                    </TableCell>
+  1175→                    <TableCell className="text-xs">{s.weight}</TableCell>
+  1176→                    <TableCell>
+  1177→                      {canEdit ? (
+  1178→                        <Select
+  1179→                          value={s.status}
+  1180→                          onValueChange={(v) => updateStage(i, 'status', v)}
+  1181→                        >
+  1182→                          <SelectTrigger className="h-8 w-[130px] text-xs">
+  1183→                            <SelectValue />
+  1184→                          </SelectTrigger>
+  1185→                          <SelectContent>
+  1186→                            <SelectItem value="NotStarted">Not Started</SelectItem>
+  1187→                            <SelectItem value="InProgress">In Progress</SelectItem>
+  1188→                            <SelectItem value="Completed">Completed</SelectItem>
+  1189→                            <SelectItem value="Delayed">Delayed</SelectItem>
+  1190→                          </SelectContent>
+  1191→                        </Select>
+  1192→                      ) : (
+  1193→                        <StatusBadge status={s.status} />
+  1194→                      )}
+  1195→                    </TableCell>
+  1196→                    <TableCell className="text-xs">{s.startDate ? formatDate(s.startDate) : '—'}</TableCell>
+  1197→                    <TableCell className="text-xs">{s.endDate ? formatDate(s.endDate) : '—'}</TableCell>
+  1198→                  </TableRow>
+  1199→                ))}
+  1200→              </TableBody>
+  1201→            </Table>
+  1202→          </div>
+  1203→        )}
+  1204→      </CardContent>
+  1205→    </Card>
+  1206→  )
+  1207→}
+  1208→
+  1209→// ============================================================
+  1210→// Helpers
+  1211→// ============================================================
+  1212→function EmptyState({
+  1213→  icon, title, desc,
+  1214→}: {
+  1215→  icon: React.ReactNode
+  1216→  title: string
+  1217→  desc: string
+  1218→}) {
+  1219→  return (
+  1220→    <div className="py-10 flex flex-col items-center justify-center text-center">
+  1221→      <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center mb-2 text-muted-foreground">
+  1222→        {icon}
+  1223→      </div>
+  1224→      <h4 className="text-sm font-medium">{title}</h4>
+  1225→      <p className="text-xs text-muted-foreground mt-1">{desc}</p>
+  1226→    </div>
+  1227→  )
+  1228→}
+  1229→
+  1230→function toInputDate(d: string | Date): string {
+  1231→  const date = typeof d === 'string' ? new Date(d) : d
+  1232→  return date.toISOString().slice(0, 10)
+  1233→}
+  1234→

@@ -2,8 +2,10 @@
 import { useState, useMemo, useCallback } from 'react'
 import { useAppStore } from '@/store/app-store'
 import { useFetch, apiPost, apiPut, apiDelete } from '@/hooks/use-fetch'
-import { PageHeader } from '@/components/shared/page-header'
+import { SectionHeader, SubSection } from '@/components/shared/section-header'
+import { StatCard } from '@/components/shared/stat-card'
 import { StatusBadge, PriorityBadge } from '@/components/shared/status-badge'
+import { EmptyState } from '@/components/shared/empty-state'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -25,8 +27,10 @@ import {
 import {
   Table, TableHeader, TableBody, TableHead, TableRow, TableCell,
 } from '@/components/ui/table'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   ListChecks, Plus, LayoutGrid, List, Filter, Pencil, Trash2, AlertTriangle, Search, X,
+  CheckCircle2, Clock, Loader2, Flag,
 } from 'lucide-react'
 import { TASK_STATUSES, TASK_STATUS_LABELS, TASK_PRIORITIES, formatDate } from '@/lib/constants'
 import { toast } from 'sonner'
@@ -55,11 +59,12 @@ interface TaskItem {
 interface ProjectOption { id: string; name: string }
 interface UserOption { id: string; name: string; role: string }
 
-const COLUMN_DEFS: { key: string; label: string; accent: string; dot: string }[] = [
-  { key: 'Todo', label: 'To Do', accent: 'text-slate-700', dot: 'bg-slate-400' },
-  { key: 'InProgress', label: 'In Progress', accent: 'text-blue-700', dot: 'bg-blue-500' },
-  { key: 'Completed', label: 'Completed', accent: 'text-emerald-700', dot: 'bg-emerald-500' },
-  { key: 'Delayed', label: 'Delayed', accent: 'text-red-700', dot: 'bg-red-500' },
+// Column color coding per status — slate / sky / emerald / red
+const COLUMN_DEFS: { key: string; label: string; accent: string; dot: string; headBg: string }[] = [
+  { key: 'Todo',       label: 'To Do',       accent: 'text-slate-700',   dot: 'bg-slate-400',   headBg: 'bg-slate-100/60' },
+  { key: 'InProgress', label: 'In Progress', accent: 'text-sky-700',     dot: 'bg-sky-500',     headBg: 'bg-sky-100/60' },
+  { key: 'Completed',  label: 'Completed',   accent: 'text-emerald-700', dot: 'bg-emerald-500', headBg: 'bg-emerald-100/60' },
+  { key: 'Delayed',    label: 'Delayed',      accent: 'text-red-700',     dot: 'bg-red-500',     headBg: 'bg-red-100/60' },
 ]
 
 const PRIORITY_DOT: Record<string, string> = {
@@ -127,7 +132,16 @@ export function TasksPage() {
   const projects = projData?.projects ?? []
   const users = usersData?.users ?? []
 
-  const overdueCount = useMemo(() => tasks.filter((t) => t.isOverdue).length, [tasks])
+  // KPI metrics — color-coded by section: tasks (amber) default, safety (red) for overdue
+  const metrics = useMemo(() => {
+    const overdue = tasks.filter((t) => t.isOverdue).length
+    const completed = tasks.filter((t) => t.status === 'Completed').length
+    const inProgress = tasks.filter((t) => t.status === 'InProgress').length
+    const todo = tasks.filter((t) => t.status === 'Todo').length
+    const delayed = tasks.filter((t) => t.status === 'Delayed').length
+    const completionRate = tasks.length > 0 ? Math.round((completed / tasks.length) * 100) : 0
+    return { total: tasks.length, overdue, completed, inProgress, todo, delayed, completionRate }
+  }, [tasks])
 
   const openNew = useCallback(() => {
     setEditing(null)
@@ -216,31 +230,72 @@ export function TasksPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
+      <SectionHeader
+        section="tasks"
         title="Task Management"
-        description="Track and manage project tasks"
-        icon={<ListChecks className="h-5 w-5" />}
+        description="Track tasks, assignments and deadlines"
+        icon={<ListChecks className="h-6 w-6" />}
         actions={
-          <Button onClick={openNew} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+          <Button onClick={openNew} className="bg-amber-600 hover:bg-amber-700 text-white">
             <Plus className="h-4 w-4 mr-2" /> New Task
           </Button>
         }
       />
 
+      {/* KPI grid — section-themed (amber) with overdue/delayed in safety red */}
+      <div>
+        <SubSection
+          section="tasks"
+          title="Task Overview"
+          description="Live status across all selected filters"
+          icon={<ListChecks className="h-4 w-4" />}
+        />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+          <StatCard
+            title="Total Tasks"
+            value={metrics.total ?? 0}
+            subtitle="In current view"
+            icon={<ListChecks className="h-5 w-5" />}
+            section="tasks"
+          />
+          <StatCard
+            title="In Progress"
+            value={metrics.inProgress ?? 0}
+            subtitle="Being worked on"
+            icon={<Loader2 className="h-5 w-5" />}
+            section="tasks"
+          />
+          <StatCard
+            title="Completed"
+            value={metrics.completed ?? 0}
+            subtitle={`${metrics.completionRate ?? 0}% completion rate`}
+            icon={<CheckCircle2 className="h-5 w-5" />}
+            section="tasks"
+          />
+          <StatCard
+            title="Overdue"
+            value={metrics.overdue ?? 0}
+            subtitle="Past due date"
+            icon={<AlertTriangle className="h-5 w-5" />}
+            section="safety"
+          />
+        </div>
+      </div>
+
       {/* Overdue banner */}
-      {overdueCount > 0 && (
+      {metrics.overdue > 0 && (
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
-          <div className="flex items-center gap-3 text-red-700">
+          <div className="flex items-center gap-3 text-red-700 min-w-0">
             <AlertTriangle className="h-5 w-5 shrink-0" />
-            <div>
-              <p className="text-sm font-semibold">{overdueCount} {overdueCount === 1 ? 'task is' : 'tasks are'} overdue</p>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold">{metrics.overdue} {metrics.overdue === 1 ? 'task is' : 'tasks are'} overdue</p>
               <p className="text-xs text-red-600/80">Review and update the status to keep your project on track.</p>
             </div>
           </div>
           <Button
             size="sm"
             variant="outline"
-            className="border-red-200 bg-white text-red-700 hover:bg-red-50"
+            className="border-red-200 bg-white text-red-700 hover:bg-red-50 w-full sm:w-auto"
             onClick={() => setStatusFilter('Delayed')}
           >
             <Filter className="h-4 w-4 mr-1" /> Filter Delayed
@@ -257,16 +312,16 @@ export function TasksPage() {
                 <Filter className="h-4 w-4" /> Filters
               </div>
               {hasFilters && (
-                <Button variant="ghost" size="sm" onClick={clearFilters} className="text-slate-500 hover:text-slate-700">
+                <Button variant="ghost" size="sm" onClick={clearFilters} className="text-slate-500 hover:text-slate-700 self-start sm:self-auto">
                   <X className="h-3.5 w-3.5 mr-1" /> Clear
                 </Button>
               )}
-              <div className="ml-auto inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1">
+              <div className="sm:ml-auto inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1 self-start sm:self-auto">
                 <button
                   onClick={() => setView('board')}
                   className={cn(
                     'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition',
-                    view === 'board' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                    view === 'board' ? 'bg-white text-amber-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
                   )}
                 >
                   <LayoutGrid className="h-3.5 w-3.5" /> Board
@@ -275,7 +330,7 @@ export function TasksPage() {
                   onClick={() => setView('list')}
                   className={cn(
                     'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition',
-                    view === 'list' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                    view === 'list' ? 'bg-white text-amber-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
                   )}
                 >
                   <List className="h-3.5 w-3.5" /> List
@@ -338,11 +393,38 @@ export function TasksPage() {
 
       {/* Loading skeleton */}
       {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Card key={i} className="animate-pulse"><CardContent className="p-4 h-64" /></Card>
-          ))}
-        </div>
+        view === 'board' ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Card key={i} className="border-border/60 shadow-sm">
+                <CardHeader className={cn('pb-3 pt-4 px-4', COLUMN_DEFS[i % 4].headBg)}>
+                  <div className="flex items-center justify-between">
+                    <div className="h-4 w-24 rounded bg-slate-200 animate-pulse" />
+                    <div className="h-5 w-8 rounded-full bg-slate-200 animate-pulse" />
+                  </div>
+                </CardHeader>
+                <CardContent className="px-3 pb-3 space-y-2.5">
+                  {Array.from({ length: 3 }).map((_, j) => (
+                    <div key={j} className="rounded-lg border border-slate-200 bg-white p-3 h-32 animate-pulse">
+                      <div className="h-3 w-3/4 rounded bg-slate-200 mb-2" />
+                      <div className="h-3 w-1/2 rounded bg-slate-100" />
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : (
+          <Card className="border-border/60 shadow-sm">
+            <CardContent className="p-0">
+              <div className="space-y-2 p-4">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="h-12 rounded-lg bg-slate-100 animate-pulse" />
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )
       ) : view === 'board' ? (
         <BoardView tasks={tasks} priorityFilter={priorityFilter} onEdit={openEdit} onDelete={setDeleteId} />
       ) : (
@@ -351,7 +433,7 @@ export function TasksPage() {
 
       {/* New/Edit dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto ayk-scrollbar">
+        <DialogContent className="w-full sm:max-w-2xl max-h-[90vh] overflow-y-auto ayk-scrollbar">
           <DialogHeader>
             <DialogTitle>{editing ? 'Edit Task' : 'New Task'}</DialogTitle>
             <DialogDescription>
@@ -438,7 +520,7 @@ export function TasksPage() {
             <div className="sm:col-span-2 space-y-2">
               <div className="flex items-center justify-between">
                 <Label>Progress</Label>
-                <span className="text-sm font-semibold text-emerald-700">{form.progress}%</span>
+                <span className="text-sm font-semibold text-amber-700">{form.progress}%</span>
               </div>
               <Slider
                 value={[form.progress]}
@@ -455,9 +537,9 @@ export function TasksPage() {
             </div>
           </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
-            <Button disabled={submitting} onClick={handleSubmit} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button variant="outline" onClick={() => setDialogOpen(false)} className="w-full sm:w-auto">Cancel</Button>
+            <Button disabled={submitting} onClick={handleSubmit} className="bg-amber-600 hover:bg-amber-700 text-white w-full sm:w-auto">
               {submitting ? 'Saving…' : editing ? 'Update Task' : 'Create Task'}
             </Button>
           </DialogFooter>
@@ -510,33 +592,54 @@ function BoardView({
   }, [filtered])
 
   if (filtered.length === 0) {
-    return <EmptyState />
+    return (
+      <Card className="border-dashed border-slate-300 bg-slate-50/50">
+        <CardContent className="p-0">
+          <EmptyState
+            icon={<Search className="h-6 w-6" />}
+            title="No tasks found"
+            description="Try adjusting your filters, or click New Task to create one."
+          />
+        </CardContent>
+      </Card>
+    )
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-      {COLUMN_DEFS.map((col) => (
-        <Card key={col.key} className="border-border/60 shadow-sm bg-slate-50/40">
-          <CardHeader className="pb-3 pt-4 px-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className={cn('h-2 w-2 rounded-full', col.dot)} />
-                <CardTitle className={cn('text-sm font-semibold', col.accent)}>{col.label}</CardTitle>
+    <div>
+      <SubSection
+        section="tasks"
+        title="Kanban Board"
+        description="Drag-equivalent board grouped by status"
+        icon={<LayoutGrid className="h-4 w-4" />}
+      />
+      {/* Mobile: 1 col stack; sm: 2 cols; xl: 4 cols (full board) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+        {COLUMN_DEFS.map((col) => (
+          <Card key={col.key} className="border-border/60 shadow-sm bg-slate-50/40 flex flex-col">
+            <CardHeader className={cn('pb-3 pt-4 px-4 rounded-t-xl', col.headBg)}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className={cn('h-2.5 w-2.5 rounded-full shrink-0', col.dot)} />
+                  <CardTitle className={cn('text-sm font-semibold truncate', col.accent)}>{col.label}</CardTitle>
+                </div>
+                <Badge variant="secondary" className="bg-white text-slate-600 border border-slate-200 tabular-nums">
+                  {grouped[col.key].length}
+                </Badge>
               </div>
-              <Badge variant="secondary" className="bg-white text-slate-600 border border-slate-200">{grouped[col.key].length}</Badge>
-            </div>
-          </CardHeader>
-          <CardContent className="px-3 pb-3 space-y-2.5 max-h-[calc(100vh-22rem)] overflow-y-auto ayk-scrollbar">
-            {grouped[col.key].length === 0 ? (
-              <div className="text-center text-xs text-slate-400 py-8">No tasks</div>
-            ) : (
-              grouped[col.key].map((t) => (
-                <TaskCard key={t.id} task={t} onEdit={onEdit} onDelete={onDelete} />
-              ))
-            )}
-          </CardContent>
-        </Card>
-      ))}
+            </CardHeader>
+            <CardContent className="px-3 pb-3 space-y-2.5 max-h-[600px] overflow-y-auto ayk-scrollbar flex-1">
+              {grouped[col.key].length === 0 ? (
+                <div className="text-center text-xs text-slate-400 py-8">No tasks</div>
+              ) : (
+                grouped[col.key].map((t) => (
+                  <TaskCard key={t.id} task={t} onEdit={onEdit} onDelete={onDelete} />
+                ))
+              )}
+            </CardContent>
+          </Card>
+        ))}
+      </div>
     </div>
   )
 }
@@ -547,13 +650,13 @@ function TaskCard({ task, onEdit, onDelete }: { task: TaskItem; onEdit: (t: Task
   return (
     <div
       onClick={() => onEdit(task)}
-      className="group rounded-lg border border-slate-200 bg-white p-3 shadow-sm hover:shadow-md hover:border-emerald-200 transition cursor-pointer"
+      className="group rounded-lg border border-slate-200 bg-white p-3 shadow-sm hover:shadow-md hover:border-amber-300 transition cursor-pointer"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
             {task.isOverdue && <span className="h-2 w-2 rounded-full bg-red-500 shrink-0" title="Overdue" />}
-            <h4 className="text-sm font-semibold text-slate-900 truncate group-hover:text-emerald-700 transition">{task.title}</h4>
+            <h4 className="text-sm font-semibold text-slate-900 truncate group-hover:text-amber-700 transition">{task.title}</h4>
           </div>
           <p className="text-xs text-slate-500 mt-0.5 truncate">{projectName}</p>
         </div>
@@ -562,32 +665,31 @@ function TaskCard({ task, onEdit, onDelete }: { task: TaskItem; onEdit: (t: Task
 
       <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
         <PriorityBadge priority={task.priority} />
-        <Badge variant="outline" className="text-[11px] text-slate-600 border-slate-200">
-          <span className={cn('h-1.5 w-1.5 rounded-full mr-1', PRIORITY_DOT[task.priority] || 'bg-slate-400')} />
-          {task.priority}
-        </Badge>
       </div>
 
       <div className="mt-2.5 space-y-2">
         <div className="flex items-center justify-between text-xs text-slate-500">
-          <span className="flex items-center gap-1 truncate">
-            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-semibold">
+          <span className="flex items-center gap-1 truncate min-w-0">
+            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-50 text-amber-700 text-[10px] font-semibold shrink-0">
               {assignee.charAt(0).toUpperCase()}
             </span>
             <span className="truncate">{assignee}</span>
           </span>
-          <span className={cn('shrink-0', task.isOverdue ? 'text-red-600 font-medium' : '')}>{formatDate(task.dueDate)}</span>
+          <span className={cn('shrink-0 flex items-center gap-1', task.isOverdue ? 'text-red-600 font-medium' : 'text-slate-500')}>
+            <Clock className="h-3 w-3" />
+            {formatDate(task.dueDate)}
+          </span>
         </div>
         <div>
           <div className="flex items-center justify-between text-[11px] text-slate-500 mb-1">
-            <span>Progress</span><span className="font-medium text-slate-700">{task.progress}%</span>
+            <span>Progress</span><span className="font-medium text-slate-700">{task.progress ?? 0}%</span>
           </div>
-          <Progress value={task.progress} className="h-1.5" />
+          <Progress value={task.progress ?? 0} className="h-1.5" />
         </div>
       </div>
 
       <div className="mt-2 flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition">
-        <Button size="sm" variant="ghost" className="h-7 px-2 text-slate-500 hover:text-emerald-600" onClick={(e) => { e.stopPropagation(); onEdit(task) }}>
+        <Button size="sm" variant="ghost" className="h-7 px-2 text-slate-500 hover:text-amber-600" onClick={(e) => { e.stopPropagation(); onEdit(task) }}>
           <Pencil className="h-3.5 w-3.5" />
         </Button>
         <Button size="sm" variant="ghost" className="h-7 px-2 text-slate-500 hover:text-red-600" onClick={(e) => { e.stopPropagation(); onDelete(task.id) }}>
@@ -613,86 +715,92 @@ function ListView({
     return tasks.filter((t) => t.priority === priorityFilter)
   }, [tasks, priorityFilter])
 
-  if (filtered.length === 0) return <EmptyState />
+  if (filtered.length === 0) {
+    return (
+      <Card className="border-dashed border-slate-300 bg-slate-50/50">
+        <CardContent className="p-0">
+          <EmptyState
+            icon={<Search className="h-6 w-6" />}
+            title="No tasks found"
+            description="Try adjusting your filters, or click New Task to create one."
+          />
+        </CardContent>
+      </Card>
+    )
+  }
 
   return (
-    <Card className="border-border/60 shadow-sm">
-      <CardContent className="p-0">
-        <div className="max-h-[calc(100vh-18rem)] overflow-y-auto ayk-scrollbar">
-          <Table>
-            <TableHeader className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur">
-              <TableRow className="hover:bg-transparent">
-                <TableHead className="min-w-[200px]">Title</TableHead>
-                <TableHead className="min-w-[140px]">Project</TableHead>
-                <TableHead>Assigned To</TableHead>
-                <TableHead>Priority</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="min-w-[120px]">Progress</TableHead>
-                <TableHead>Due Date</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((t) => (
-                <TableRow key={t.id} className={cn(t.isOverdue && 'bg-red-50/60 hover:bg-red-50')}>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      {t.isOverdue && <span className="h-2 w-2 rounded-full bg-red-500 shrink-0" title="Overdue" />}
-                      <button onClick={() => onEdit(t)} className="text-left font-medium text-slate-900 hover:text-emerald-700 truncate">
-                        {t.title}
-                      </button>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-slate-600 text-xs">{t.project?.name || '—'}</TableCell>
-                  <TableCell className="text-slate-700 text-xs">
-                    {t.assignedToName || t.assignedTo?.name || 'Unassigned'}
-                  </TableCell>
-                  <TableCell><PriorityBadge priority={t.priority} /></TableCell>
-                  <TableCell><StatusBadge status={t.status} /></TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2 min-w-[120px]">
-                      <Progress value={t.progress} className="h-1.5 flex-1" />
-                      <span className="text-xs font-medium text-slate-600 tabular-nums w-9 text-right">{t.progress}%</span>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <span className={cn('text-xs', t.isOverdue ? 'text-red-600 font-medium' : 'text-slate-600')}>
-                      {formatDate(t.dueDate)}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-slate-500 hover:text-emerald-600" onClick={() => onEdit(t)}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-slate-500 hover:text-red-600" onClick={() => onDelete(t.id)}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
-
-/* ------------------------------ Empty State ------------------------------ */
-function EmptyState() {
-  return (
-    <Card className="border-dashed border-slate-300 bg-slate-50/50">
-      <CardContent className="py-16 flex flex-col items-center justify-center text-center">
-        <div className="h-12 w-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mb-3">
-          <Search className="h-6 w-6" />
-        </div>
-        <h3 className="text-base font-semibold text-slate-800">No tasks found</h3>
-        <p className="text-sm text-slate-500 mt-1 max-w-sm">
-          Try adjusting your filters, or click <span className="font-medium text-emerald-700">New Task</span> to create one.
-        </p>
-      </CardContent>
-    </Card>
+    <div>
+      <SubSection
+        section="tasks"
+        title="Task List"
+        description="Tabular view of all tasks"
+        icon={<List className="h-4 w-4" />}
+      />
+      <Card className="border-border/60 shadow-sm">
+        <CardContent className="p-0">
+          <ScrollArea className="max-h-[500px]">
+            <div className="min-w-[900px]">
+              <Table>
+                <TableHeader className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur">
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="min-w-[200px]">Title</TableHead>
+                    <TableHead className="min-w-[140px]">Project</TableHead>
+                    <TableHead>Assigned To</TableHead>
+                    <TableHead>Priority</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="min-w-[120px]">Progress</TableHead>
+                    <TableHead>Due Date</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filtered.map((t) => (
+                    <TableRow key={t.id} className={cn(t.isOverdue && 'bg-red-50/60 hover:bg-red-50')}>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          {t.isOverdue && <span className="h-2 w-2 rounded-full bg-red-500 shrink-0" title="Overdue" />}
+                          <button onClick={() => onEdit(t)} className="text-left font-medium text-slate-900 hover:text-amber-700 truncate">
+                            {t.title}
+                          </button>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-slate-600 text-xs">{t.project?.name || '—'}</TableCell>
+                      <TableCell className="text-slate-700 text-xs">
+                        {t.assignedToName || t.assignedTo?.name || 'Unassigned'}
+                      </TableCell>
+                      <TableCell><PriorityBadge priority={t.priority} /></TableCell>
+                      <TableCell><StatusBadge status={t.status} /></TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2 min-w-[120px]">
+                          <Progress value={t.progress ?? 0} className="h-1.5 flex-1" />
+                          <span className="text-xs font-medium text-slate-600 tabular-nums w-9 text-right">{t.progress ?? 0}%</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <span className={cn('text-xs flex items-center gap-1', t.isOverdue ? 'text-red-600 font-medium' : 'text-slate-600')}>
+                          <Clock className="h-3 w-3" />
+                          {formatDate(t.dueDate)}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-slate-500 hover:text-amber-600" onClick={() => onEdit(t)}>
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-slate-500 hover:text-red-600" onClick={() => onDelete(t.id)}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </ScrollArea>
+        </CardContent>
+      </Card>
+    </div>
   )
 }

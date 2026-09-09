@@ -1,0 +1,429 @@
+     1→     1→# AYK PTE LTD – Solar Project Management System – Worklog
+     2→     2→
+     3→     3→This is the shared worklog for the AYK PTE LTD Solar PM build. Each agent appends its own section below using `---` as separator.
+     4→     4→
+     5→     5→## Foundation (built by main agent)
+     6→     6→
+     7→     7→### Tech Stack
+     8→     8→- Next.js 16 App Router + TypeScript + Tailwind CSS 4 + shadcn/ui (New York)
+     9→     9→- Prisma ORM + SQLite (`@/lib/db` exports `db`)
+    10→    10→- Zustand store at `src/store/app-store.ts`
+    11→    11→- recharts for charts, framer-motion for animations
+    12→    12→- All client-side view switching via Zustand `currentNav` (no Next.js routing for pages — only `/` is user-visible)
+    13→    13→- API routes under `src/app/api/*`
+    14→    14→
+    15→    15→### Branding
+    16→    16→- App name: `AYK PTE LTD`, tagline: `Solar Energy • Build a Brighter Future`
+    17→    17→- Primary color: emerald-600 (green) — for success/progress/primary actions
+    18→    18→- Secondary: sky/blue for charts and info
+    19→    19→- Warning: amber/orange
+    20→    20→- Critical: red
+    21→    21→- Sidebar: dark slate-900 (navy)
+    22→    22→- Main bg: slate-50
+    23→    23→- Cards: white, rounded-xl, border-slate-200
+    24→    24→
+    25→    25→### Database Schema (prisma/schema.prisma)
+    26→    26→Models: User, Project, ProjectStage, DailyProgress, Task, Worker, Attendance, Material, MaterialTransaction, Expense, SafetyChecklist, SafetyIncident, Document, Notification.
+    27→    27→Database is seeded with realistic AYK data (5 projects, 24 workers, 12 tasks, 10 materials, etc.).
+    28→    28→
+    29→    29→### Auth
+    30→    30→- Demo auth via cookie `ayk_session` = userId.
+    31→    31→- `/api/auth/login` (POST {email, password}) → sets cookie, returns user
+    32→    32→- `/api/auth/me` (GET) → returns {user} (user null if not logged in)
+    33→    33→- `/api/auth/demo-users` (GET) → returns users with demo passwords
+    34→    34→- Passwords stored as `demo$<plain>`. Demo accounts:
+    35→    35→  - admin@ayk.com.sg / admin123 (Admin)
+    36→    36→  - pm@ayk.com.sg / pm123 (Project Manager)
+    37→    37→  - supervisor@ayk.com.sg / super123 (Site Supervisor)
+    38→    38→  - safety@ayk.com.sg / safety123 (Safety Officer)
+    39→    39→  - engineer@ayk.com.sg / eng123 (Engineer)
+    40→    40→  - store@ayk.com.sg / store123 (Store Officer)
+    41→    41→
+    42→    42→### API Routes (all return JSON, all under /api)
+    43→    43→- GET `/api/dashboard` → { stats, projects, charts, notifications, lowStockMaterials }
+    44→    44→- GET `/api/projects` (optional ?status=, ?managerId=) → { projects[] } (each project includes stages[], manager, overallProgress, plannedProgress, installationPct, _count)
+    45→    45→- POST `/api/projects` (body: {name, location, client, totalPanels, capacity, status, startDate, endDate, budget, managerId, description}) → { project }
+    46→    46→- GET `/api/projects/[id]` → { project } (includes stages, dailyProgress, tasks, expenses, documents, sCurve)
+    47→    47→- PUT `/api/projects/[id]` → { project }
+    48→    48→- DELETE `/api/projects/[id]` (admin only)
+    49→    49→- GET/PUT `/api/projects/[id]/stages` → { stages[] }; PUT body: { stages: [{id, name, plannedPct, actualPct, weight, status, startDate, endDate}] }
+    50→    50→- GET `/api/progress` (optional ?projectId=, ?from=, ?to=, ?limit=) → { entries[] }
+    51→    51→- POST `/api/progress` (body: {projectId, date, installedPanels, totalInstalled, manHours, workers, materialsUsed, equipmentUsed, workCompleted, workPending, siteStatus, remarks, photoUrls, gpsLocation}) → { entry }
+    52→    52→- DELETE `/api/progress/[id]`
+    53→    53→- GET `/api/tasks` (optional ?projectId=, ?status=, ?assignedToId=) → { tasks[] } (includes project, assignedTo, isOverdue)
+    54→    54→- POST `/api/tasks` (body: {title, description, projectId, assignedToId, assignedToName, team, priority, status, progress, startDate, dueDate, remarks}) → { task }
+    55→    55→- PUT `/api/tasks/[id]` → { task }
+    56→    56→- DELETE `/api/tasks/[id]`
+    57→    57→- GET `/api/workers` (optional ?projectId=, ?team=, ?status=) → { workers[] } (includes project, attendance[last 7])
+    58→    58→- POST `/api/workers` (body: {name, employeeId, role, team, projectId, phone, skillLevel, status}) → { worker }
+    59→    59→- PUT `/api/workers/[id]` → { worker }; POST `/api/workers/[id]` (body: {action: 'checkin'|'checkout'}) → { attendance }
+    60→    60→- DELETE `/api/workers/[id]`
+    61→    61→- GET `/api/attendance` (optional ?from=, ?to=, ?workerId=) → { records[] }
+    62→    62→- GET `/api/materials` (optional ?category=, ?lowStock=) → { materials[] } (includes transactions[last 5])
+    63→    63→- POST `/api/materials` (body: {name, category, unit, stockQty, minStockLevel, unitPrice, supplier}) → { material }
+    64→    64→- PUT/DELETE `/api/materials/[id]`
+    65→    65→- GET `/api/transactions` (optional ?materialId=, ?projectId=, ?type=) → { transactions[] }
+    66→    66→- POST `/api/transactions` (body: {materialId, projectId, type: 'Add'|'Issue'|'Return', qty, remarks, date}) → { transaction, newStock } (auto-updates stock)
+    67→    67→- GET `/api/expenses` (optional ?projectId=, ?category=, ?approvalStatus=) → { expenses[] }
+    68→    68→- POST `/api/expenses` (body: {date, projectId, category, description, amount, paidBy, approvalStatus, receiptUrl}) → { expense }
+    69→    69→- PUT/DELETE `/api/expenses/[id]`
+    70→    70→- GET `/api/safety/checklists` (optional ?projectId=, ?checklistType=) → { checklists[] }
+    71→    71→- POST `/api/safety/checklists` (body: {date, projectId, checklistType, helmet, safetyShoes, gloves, harness, workAreaClean, equipmentCondition, electricalSafety, location, remarks}) → { checklist } (auto-calculates compliancePct)
+    72→    72→- GET `/api/safety/incidents` (optional ?projectId=, ?type=, ?status=) → { incidents[] }
+    73→    73→- POST `/api/safety/incidents` (body: {date, projectId, type, severity, description, location, status, actionTaken}) → { incident }
+    74→    74→- PUT `/api/safety/incidents/[id]`
+    75→    75→- GET `/api/documents` (optional ?projectId=, ?category=) → { documents[] }
+    76→    76→- POST `/api/documents` (body: {name, category, projectId, fileUrl, fileType, fileSize, description}) → { document }
+    77→    77→- DELETE `/api/documents/[id]`
+    78→    78→- GET `/api/notifications` → { notifications[] }
+    79→    79→- PUT `/api/notifications/[id]` (body: {isRead}) → { notification }
+    80→    80→- GET `/api/users` → { users[] }; POST `/api/users` (body: {email, name, password, role, phone})
+    81→    81→- PUT/DELETE `/api/users/[id]`
+    82→    82→- GET `/api/reports/[type]` → { type, title, html, data } where type is one of: daily, weekly, monthly, manpower, material, expense, safety, project-summary, planned-vs-actual
+    83→    83→
+    84→    84→### Zustand Store (`src/store/app-store.ts`)
+    85→    85→```
+    86→    86→useAppStore() → { user, currentNav, selectedProjectId, detailProjectId, sidebarOpen, notifOpen, searchOpen, setUser, logout, setNav, setSelectedProjectId, openProject, closeProject, setSidebarOpen, setNotifOpen, setSearchOpen }
+    87→    87→```
+    88→    88→- `currentNav` is NavKey: 'dashboard' | 'projects' | 'progress' | 'tasks' | 'manpower' | 'materials' | 'expenses' | 'safety' | 'documents' | 'reports' | 'settings' | 'mobile' | 'daily-entry'
+    89→    89→- `openProject(id)` sets detailProjectId and switches to 'projects'
+    90→    90→
+    91→    91→### Shared Components (in src/components/shared/)
+    92→    92→- `StatCard` — props: { title, value, subtitle, icon, accent: 'green'|'blue'|'orange'|'red'|'purple'|'slate', className }
+    93→    93→- `PageHeader` — props: { title, description, icon, actions, className }
+    94→    94→- `StatusBadge` — props: { status } — renders colored badge for project/task/incident/expense statuses
+    95→    95→- `PriorityBadge` — props: { priority }
+    96→    96→
+    97→    97→### Hooks (src/hooks/)
+    98→    98→- `useFetch<T>(url, options?)` → { data, loading, error, refetch }
+    99→    99→- `apiPost<T>(url, body)`, `apiPut<T>(url, body)`, `apiDelete<T>(url)`
+   100→   100→
+   101→   101→### lib/constants.ts exports
+   102→   102→- ROLES (role key → label), PROJECT_STAGES, PROJECT_STATUSES, TASK_STATUSES, TASK_PRIORITIES, EXPENSE_CATEGORIES, MATERIAL_CATEGORIES + MATERIAL_CATEGORY_LABELS, DOCUMENT_CATEGORIES, SAFETY_INCIDENT_TYPES + SAFETY_INCIDENT_LABELS, SITE_STATUSES, NOTIFICATION_TYPES, APP_NAME, APP_TAGLINE, PERMISSIONS (role → nav[]), canAccess(role, nav), formatCurrency(n), formatNumber(n), formatDate(d), formatDateTime(d), daysBetween, calcOverallProgress(stages), calcPlannedProgress(stages)
+   103→   103→
+   104→   104→### Established Design Pattern (FOLLOW THIS)
+   105→   105→- Page wrapper: `<div className="space-y-6">` then `<PageHeader title=... description=... icon=... actions=... />`
+   106→   106→- Stat cards: grid `grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4`
+   107→   107→- Cards: `border-border/60 shadow-sm hover:shadow-md transition-shadow`
+   108→   108→- Charts: recharts ResponsiveContainer with height 260-320
+   109→   109→- Forms: use Dialog for create/edit, react-hook-form not required (useState is fine)
+   110→   110→- Tables: use the shadcn Table component for data tables
+   111→   111→- Loading: skeleton cards with `animate-pulse`
+   112→   112→- Toasts: `import { toast } from 'sonner'` then `toast.success(...)` / `toast.error(...)`
+   113→   113→- Modals: shadcn Dialog with DialogContent/DialogHeader/DialogTitle/DialogFooter
+   114→   114→- Confirmation: shadcn AlertDialog
+   115→   115→- Use `formatCurrency`, `formatNumber`, `formatDate` from `@/lib/constants`
+   116→   116→- Long lists: `max-h-96 overflow-y-auto ayk-scrollbar`
+   117→   117→- Icons: lucide-react
+   118→   118→
+   119→   119→### App Shell
+   120→   120→`src/components/layout/app-shell.tsx` renders sidebar + topbar + main + mobile nav, switching pages by `currentNav`.
+   121→   121→Pages are imported from `src/components/pages/<name>-page.tsx`.
+   122→   122→
+   123→   123→---
+   124→   124→Task ID: 9
+   125→   125→Agent: Materials + Expenses Pages Builder
+   126→   126→Task: Build Materials page (stock + transactions) and Expenses page (tracking + categories)
+   127→   127→
+   128→   128→Work Log:
+   129→   129→- Read worklog.md to understand the foundation (API routes, shared components, design pattern, Zustand store, constants).
+   130→   130→- Inspected existing `dashboard-page.tsx`, shared `PageHeader`/`StatCard`/`StatusBadge`, `useFetch`/`apiPost`/`apiPut`/`apiDelete` hooks, shadcn UI primitives (table, dialog, alert-dialog, scroll-area, tabs, select, checkbox, input, label, card, button, badge, skeleton, progress, textarea), and the API route implementations for `/api/materials`, `/api/transactions`, `/api/expenses`, and `/api/projects`.
+   131→   131→- Confirmed Prisma schema for Material / MaterialTransaction / Expense / Project (budget, actualCost) to wire chart calculations.
+   132→   132→- Built `src/components/pages/materials-page.tsx`:
+   133→   133→  - PageHeader with `Package` icon, emerald "Add Material" (Plus) + outline "New Transaction" (ArrowLeftRight) actions.
+   134→   134→  - 5 stat cards: Total Materials (green), Low Stock Items (red), Total Stock Value (purple, sum stockQty*unitPrice), Categories (blue), Out of Stock (orange).
+   135→   135→  - Amber Low Stock Alert card (only when lowStockMaterials.length > 0), scrollable grid of items with min level + current stock badge.
+   136→   136→  - Tabs: Inventory / Transactions.
+   137→   137→  - Inventory tab: Category Select + Low Stock Only Checkbox filter bar; table with Name, Category badge (MATERIAL_CATEGORY_LABELS), Stock Qty (red if <= minLevel else emerald), Unit, Min Level, Unit Price (formatCurrency), Stock Value, Supplier, Actions (Add Stock / Issue / Return / Edit / Delete). Edit opens Dialog with name/category/unit/stockQty/minStockLevel/unitPrice/supplier — POST/PUT to `/api/materials` or `/api/materials/[id]`. Add Stock / Issue / Return opens Dialog with material (pre-selected from row), project select, qty, remarks → POST `/api/transactions` (auto-updates stock). Delete via AlertDialog → DELETE `/api/materials/[id]`.
+   138→   138→  - Transactions tab: Material Select + Project Select (from `/api/projects`) + Type Select (All/Add/Issue/Return) filter bar; table with Date, Material, Type badge (Add=emerald, Issue=sky, Return=amber), Qty, Project, Remarks. All filtered client-side from `/api/transactions`.
+   139→   139→  - Optional material usage BarChart (last 30 days) with added / issued / returned bars per material.
+   140→   140→- Built `src/components/pages/expenses-page.tsx`:
+   141→   141→  - PageHeader with `DollarSign` icon, emerald "Add Expense" (Plus) action.
+   142→   142→  - 4 stat cards: Total Expenses (green, sum amount), Approved (blue, sum + count), Pending (orange, sum + count), Rejected (red, sum + count).
+   143→   143→  - Budget vs Actual recharts BarChart per project: budget vs (actualCost + sum of approved expenses), pulled from `/api/projects` + `/api/expenses`.
+   144→   144→  - Expense by Category recharts PieChart (excluding rejected).
+   145→   145→  - Filter bar: Project Select + Category Select (EXPENSE_CATEGORIES) + Approval Status Select.
+   146→   146→  - Expenses table (shadcn Table inside ScrollArea max-h-[560px]) with Date, Project, Category badge (distinct colors, no indigo), Description (with receipt icon if receiptUrl), Amount (formatCurrency), Paid By, Approval (StatusBadge), Actions (Approve/Reject only for Pending + Edit + Delete).
+   147→   147→  - Add/Edit Expense dialog with date (default today), project Select (incl. "No Project"), category Select, description, amount, paidBy, approvalStatus Select (Pending/Approved/Rejected), receiptUrl Input + Upload button (records filename via hidden file input). POST `/api/expenses` for new, PUT `/api/expenses/[id]` for edit.
+   148→   148→  - Approve/Reject inline buttons call PUT `/api/expenses/[id]` with `{ approvalStatus }` and toast on success/failure.
+   149→   149→  - Delete via AlertDialog → DELETE `/api/expenses/[id]`.
+   150→   150→  - Project Profitability card: per-project card with budget, actual cost, approved expenses, total spent, used % progress bar (red if over), profit (emerald/red), margin % (emerald/red), and an "Over Budget" / "On Track" badge.
+   151→   151→- Verified with `bun run lint` — both new files pass with 0 errors and 0 warnings (only a stray unused-disable warning in another agent's `daily-entry-page.tsx` remains).
+   152→   152→- Dev server log shows the only remaining module-not-found is for `mobile-page` (another agent's task); materials-page and expenses-page imports resolve cleanly.
+   153→   153→
+   154→   154→Stage Summary:
+   155→   155→- Files created (ONLY these two — no other files modified):
+   156→   156→  - `src/components/pages/materials-page.tsx` — exported `MaterialsPage` ('use client')
+   157→   157→  - `src/components/pages/expenses-page.tsx` — exported `ExpensesPage` ('use client')
+   158→   158→- Decisions:
+   159→   159→  - Single source of truth: fetch `/api/materials`, `/api/transactions`, `/api/expenses`, `/api/projects` once each and filter client-side, so stats / charts / low-stock alerts always reflect the full dataset regardless of selected filters.
+   160→   160→  - Used `MATERIAL_CATEGORY_LABELS` for display (SolarPanels → "Solar Panels" etc.) with distinct badge colors per category (amber/sky/teal/slate/emerald/orange/violet — no indigo per design rule).
+   161→   161→  - All transactions auto-update stock via existing `/api/transactions` POST; no duplicate stock mutation on the client.
+   162→   162→  - Emerald primary buttons use `bg-emerald-600 hover:bg-emerald-700 text-white` matching the dashboard style; cards use white, rounded-xl, border-slate-200, shadow-sm; tables use ScrollArea max-h-[500px] / max-h-[560px] with sticky headers.
+   163→   163→  - Receipt "upload" simply records the chosen filename into `receiptUrl` (no server-side file storage) as instructed.
+   164→   164→  - Profitability usedPct capped at 100 for the progress bar visual while the actual numeric still shows the real figure when over budget (in red).
+   165→   165→
+   166→   166→---
+   167→   167→Task ID: 7-a
+   168→   168→Agent: Projects Page Builder
+   169→   169→Task: Build the Projects page (list + detail view + create/edit dialog + delete) for AYK PTE LTD
+   170→   170→
+   171→   171→Work Log:
+   172→   172→- Read worklog.md foundation, explored src/ (constants.ts, app-store.ts, use-fetch.ts, shared components, dashboard-page.tsx for design pattern, projects API routes, users API route, shadcn ui primitives Dialog/Select/AlertDialog/Tabs/Table/ScrollArea/Button/Input/Textarea/Progress).
+   173→   173→- Created /home/z/my-project/src/components/pages/projects-page.tsx as a single 'use client' file exporting ProjectsPage.
+   174→   174→- Implemented root ProjectsPage component that switches between ProjectsList (when detailProjectId === null) and ProjectDetail (when set) using useAppStore.
+   175→   175→- LIST MODE:
+   176→   176→  * PageHeader with FolderKanban icon, emerald "New Project" button gated by canEdit (Admin or ProjectManager).
+   177→   177→  * Filter bar Card with: search input (filter by name/location/code), status Select (All/Active/Completed/Delayed/OnHold via PROJECT_STATUSES), Cards/Table view toggle (emerald when active).
+   178→   178→  * Loading: 6 skeleton cards with animate-pulse. Empty state: centered muted block with FolderKanban icon + "New Project" CTA when canEdit.
+   179→   179→  * Cards view: responsive grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4, each card shows code, name (hover emerald), location, status badge, overall progress bar, panels installed/total with mini progress, budget actual/total with mini progress, start→end dates. Click opens detail via openProject(id).
+   180→   180→  * Table view: shadcn Table inside ScrollArea (max-h-[600px]) with columns Code, Name, Location, Status, Progress (mini bar), Panels, Budget, Manager, End Date, Actions. Row click opens detail; action buttons (View/Edit/Delete) use stopPropagation. Edit gated by canEdit, Delete gated by Admin only.
+   181→   181→  * Create/Edit Dialog (sm:max-w-[640px], overflow-y-auto ayk-scrollbar) with shared ProjectFormFields component: name*, location*, client, capacity, totalPanels, budget, status Select, project manager Select (fetched from /api/users, filtered to PM/Admin/Engineer; uses 'unassigned' sentinel value to satisfy radix Select), startDate*, endDate*, description Textarea. Submit validates required fields, POST or PUT based on editId, then refetch + toast.
+   182→   182→  * Delete: AlertDialog confirmation, red destructive action button, calls apiDelete + refetch + toast.success/error.
+   183→   183→- DETAIL MODE:
+   184→   184→  * PageHeader with project name as title, description = "code · location · client", status badge + Back (ArrowLeft) + Edit (Pencil, emerald) in actions; Edit gated by canEdit.
+   185→   185→  * Optional description Card (whitespace-pre-line) when project.description present.
+   186→   186→  * Stat cards grid (2/3/4 cols) using StatCard: Total Panels, Installed, Installation %, Overall Progress, Planned Progress, Variance (+/-), Budget, Actual Cost, Remaining — Variance/Remaining accents flip green/red based on sign.
+   187→   187→  * S-Curve Card: recharts AreaChart (height 300) of project.sCurve with two gradient-filled areas (sky/blue planned, emerald actual), formatted XAxis (d/m), YAxis via formatNumber, Tooltip label formatted via formatDate, Legend.
+   188→   188→  * StagesCard: shadcn Table of 6 stages with name, planned %, actual % (inline Input when canEdit), Progress bar, weight, status (inline Select when canEdit with NotStarted/InProgress/Completed/Delayed), start/end dates. Save Stages button (emerald) PUTs to /api/projects/[id]/stages with array payload, then refetch + toast. Local state syncs from project.stages via useEffect.
+   189→   189→  * Tabs: Daily Progress | Tasks | Expenses | Documents | Material Transactions. TabsList className="flex w-full overflow-x-auto" so all 5 triggers share width on mobile and scroll if needed.
+   190→   190→    - Daily Progress: ScrollArea max-h-96 with Table of date, installed, total, manHours, workers, site StatusBadge, submittedBy name, remarks (truncated).
+   191→   191→    - Tasks: Table of title, PriorityBadge, StatusBadge, progress bar, dueDate, assignedTo name. "Open Tasks" button calls setNav('tasks').
+   192→   192→    - Expenses: Table of date, category, description, amount (currency, right-aligned), approvalStatus badge, paidBy. "Open Expenses" calls setNav('expenses').
+   193→   193→    - Documents: Table of name (with FileText icon), category, fileType Badge, uploadedByName, createdAt. "Open Documents" calls setNav('documents').
+   194→   194→    - Material Transactions: Table of material.name, type Badge (color-coded Add/Issue/Return), qty, date, remarks. Empty states per tab use shared EmptyState component.
+   195→   195→  * Edit Dialog in detail mode reuses ProjectFormFields, pre-fills editForm from project, PUT then refetch + toast.
+   196→   196→  * Loading skeleton for detail view: 9 stat-card skeletons + chart-card skeleton.
+   197→   197→- Shared helpers: ProjectFormFields, Field wrapper (Label + control), ProjectCard, StagesCard, EmptyState, toInputDate.
+   198→   198→- All dates via formatDate, currency via formatCurrency, numbers via formatNumber.
+   199→   199→- Verified: bun run lint passes with zero errors. Dev log shows only unrelated module-not-found errors for mobile-page and daily-entry-page (other agents' tasks); projects-page module now resolves.
+   200→   200→
+   201→   201→Stage Summary:
+   202→   202→- File created: /home/z/my-project/src/components/pages/projects-page.tsx (~700 lines, single 'use client' component exported as ProjectsPage).
+   203→   203→- Key decisions:
+   204→   204→  * Two top-level subcomponents (ProjectsList / ProjectDetail) selected by detailProjectId from Zustand store.
+   205→   205→  * Shared ProjectFormFields component reused by both create and edit dialogs to avoid duplication.
+   206→   206→  * Users fetched via /api/users and filtered to PM/Admin/Engineer for the manager Select; sentinel value 'unassigned' used because radix Select cannot accept empty string.
+   207→   207→  * Inline stage editing (actualPct Input + status Select) with a single Save Stages button that batch PUTs all 6 stages to /api/projects/[id]/stages.
+   208→   208→  * Tabs use w-full flex so all 5 triggers share width on mobile (triggers have flex-1 from shadcn default).
+   209→   209→  * Role gating: canEdit = Admin or ProjectManager (create/edit/stage edit), canDelete = Admin only.
+   210→   210→  * S-curve uses two Area series with gradient fills — emerald (#10b981) for actual, sky (#0ea5e9) for planned, matching established brand palette.
+   211→   211→  * Variance and Remaining stat cards flip accent (green/red) based on sign.
+   212→   212→Task ID: 10-a
+   213→   213→Agent: Safety + Documents Pages Builder
+   214→   214→Task: Build Safety page (checklists + incidents) and Documents page (upload + organize)
+   215→   215→
+   216→   216→Work Log:
+   217→   217→- Read worklog.md to understand foundation (API routes, shared components, hooks, Zustand store, constants).
+   218→   218→- Inspected shared components (PageHeader, StatCard, StatusBadge) and shadcn UI primitives (Checkbox, AlertDialog, ScrollArea, Select).
+   219→   219→- Verified existing API routes for safety/checklists, safety/incidents (+[id] PUT), documents (+[id] DELETE) to match response shapes exactly.
+   220→   220→- Built `src/components/pages/safety-page.tsx`:
+   221→   221→  - PageHeader with emerald "New Checklist" + red-outline "Report Incident" actions.
+   222→   222→  - 5 stat cards: Total / Open / Closed / Near Miss / PPE Compliance % (avg last 30 checklists).
+   223→   223→  - recharts LineChart showing daily compliance % for last 14 days (filled with 0 when no checklist that day).
+   224→   224→  - Tabs: Checklists / Incidents / PPE Compliance.
+   225→   225→  - Checklists tab: project + type filter, shadcn Table inside ScrollArea (28rem), type badge, compliance progress bar.
+   226→   226→  - New-checklist dialog: date, project, type, 7 shadcn Checkboxes (Helmet/Safety Shoes/Gloves/Harness/Work Area Clean/Equipment Condition/Electrical Safety), live compliance badge, location, remarks. POSTs to /api/safety/checklists.
+   227→   227→  - Incidents tab: project + type + status filter, card grid (1/2/3 cols) with type-specific icon (AlertCircle red / TriangleAlert amber / HardHat sky), severity badge, action-taken panel, edit button.
+   228→   228→  - Report-incident dialog + edit-incident dialog (PUT /api/safety/incidents/[id]).
+   229→   229→  - PPE Compliance tab: summary card + per-item Progress bars color-coded (>=90 emerald / >=70 amber / else red).
+   230→   230→  - Used SAFETY_INCIDENT_LABELS so NearMiss → "Near Miss" etc.
+   231→   231→- Built `src/components/pages/documents-page.tsx`:
+   232→   232→  - PageHeader with emerald Upload button.
+   233→   233→  - 4 stat cards: Total / Top Category / Photos / Reports (computed from /api/documents).
+   234→   234→  - Filter bar: project, category, search-by-name input.
+   235→   235→  - 8 category cards row with icon + count; click filters by that category (click again clears).
+   236→   236→  - Documents grid (1/2/3/4 cols) with file-type-aware icon (image→sky, pdf→red, sheet→emerald, word→blue, zip→amber), category badge, project, uploader, fileSize (KB/MB), createdAt, Preview/Download/Delete actions.
+   237→   237→  - Upload dialog: drag-drop area + click-to-browse, auto-fill name from filename, FileReader API to read file metadata, simulated progress bar, POST /api/documents with fileUrl fallback `/documents/\${name}`. Object URL kept for image preview.
+   238→   238→  - Preview dialog: real image preview when object URL is available; PDFs show "Open in viewer" button (toast-only demo); other types show "Preview not available".
+   239→   239→  - Download button: toast.info("Download started (demo)").
+   240→   240→  - Delete: AlertDialog confirm → DELETE /api/documents/[id] → refetch + toast.
+   241→   241→  - Human-readable category labels (MethodStatements → "Method Statements", RiskAssessments → "Risk Assessments").
+   242→   242→- Avoided empty-string SelectItem value (Radix warning) by using "__none__" sentinel for optional project in upload dialog.
+   243→   243→- Switched sync-from-prop logic in IncidentDialog from useMemo (side-effect anti-pattern) to useEffect.
+   244→   244→- Ran `bun run lint` — 0 errors / 0 warnings on my two files (one remaining warning is in `daily-entry-page.tsx` belonging to another agent).
+   245→   245→
+   246→   246→Stage Summary:
+   247→   247→- Files created:
+   248→   248→  - /home/z/my-project/src/components/pages/safety-page.tsx (783 lines, exports `SafetyPage`)
+   249→   249→  - /home/z/my-project/src/components/pages/documents-page.tsx (603 lines, exports `DocumentsPage`)
+   250→   250→- Both files are `'use client'` and self-contained (no new shared deps, no test files, no other files modified).
+   251→   251→- No new API routes, no schema changes — used existing endpoints as documented.
+   252→   252→- Design pattern matches dashboard: white cards with `border-border/60 shadow-sm hover:shadow-md`, emerald-600 primary, sky/amber/red accents, responsive grids (1→2→3→4/5), skeleton/loading states, sonner toasts, AlertDialog for destructive actions.
+   253→   253→- Custom small helpers: PPE_ITEMS / CATEGORY_META / CATEGORY_LABELS maps kept local to each file for self-containment; `formatFileSize` helper lives only in documents-page (not promoted to constants since not requested).
+   254→   254→---
+   255→   255→Task ID: 7-b
+   256→   256→Agent: Progress + Daily Entry Pages Builder
+   257→   257→Task: Build Progress page and Daily Progress Entry page
+   258→   258→
+   259→   259→Work Log:
+   260→   260→- Read worklog.md to understand the foundation: API routes (`/api/projects`, `/api/progress`), shared components (`PageHeader`, `StatCard`, `StatusBadge`), hooks (`useFetch`, `apiPost`), Zustand store (`useAppStore`), and constants (`SITE_STATUSES`, `formatNumber`, `formatDate`, `daysBetween`).
+   261→   261→- Inspected existing `dashboard-page.tsx` to match the established design pattern (PageHeader + StatCard grid + recharts ResponsiveContainer in Cards with `border-border/60 shadow-sm hover:shadow-md`, `ayk-scrollbar` for long lists).
+   262→   262→- Inspected `prisma/schema.prisma` to confirm `DailyProgress` fields and the JSON-string conventions for `materialsUsed`, `equipmentUsed`, `photoUrls`.
+   263→   263→- Inspected `/api/projects/route.ts` (each project carries `plannedProgress`, `overallProgress`, `startDate`, `endDate`, `totalPanels`) and `/api/progress/route.ts` (GET supports `?projectId=`, `?from=`, `?to=`, `?limit=`; POST writes back to project `installedPanels` and the Installation stage).
+   264→   264→- Created `src/components/pages/progress-page.tsx`:
+   265→   265→  - Filter bar wired to `useAppStore.selectedProjectId` (Project select with "All Projects" option), `from`/`to` date inputs, and a Daily/Weekly/Monthly `ToggleGroup` (granularity).
+   266→   266→  - Stat cards row: Overall Planned %, Overall Actual %, Variance % (green/red accent based on sign), Schedule Delay (days) computed from `daysBetween(start, today)` vs `overallProgress`.
+   267→   267→  - Planned vs Actual `BarChart` (sky = planned, emerald = actual) — one bar pair per project; X axis truncates names > 14 chars.
+   268→   268→  - S-Curve `AreaChart` with two stacked areas over time — planned is a linear interpolation `elapsed/total * totalPanels` per project, actual is the max `totalInstalled` observed on or before each sampled day. Sums across all scoped projects when "All Projects" is selected. Sampled to ~150 points max to keep rendering fast.
+   269→   269→  - Progress entries table inside `ScrollArea` (`max-h-[500px] ayk-scrollbar`); columns: Date, Project, Installed, Total, Man-hrs, Workers, Site Status (StatusBadge), Submitted By. Aggregation by ISO week or month groups rows by (period + projectId) and sums `installedPanels`/`manHours`/`workers`, takes the max `totalInstalled`, and forwards the latest entry's `siteStatus` and submitter name.
+   270→   270→  - "New Entry" emerald button calls `setNav('daily-entry')`.
+   271→   271→- Created `src/components/pages/daily-entry-page.tsx`:
+   272→   272→  - PageHeader with `<Sun>` icon and a "Back to Progress" outline button calling `setNav('progress')`.
+   273→   273→  - Mobile-first centered form Card (`max-w-2xl mx-auto`) with sections for Project, Date, Installed/Total, Man-hours/Workers, Materials (multi-row with Add/Remove), Equipment (checkbox group: Crane, Drill Rig, Torque Wrench, Lift, Scaffold, Generator, Other), Work Completed, Work Pending, Site Status (Select from `SITE_STATUSES`), Remarks, Photos (file input with `capture="environment"`, thumbnail grid using object URLs), and GPS Location (text input + "Get Location" button using `navigator.geolocation.getCurrentPosition`).
+   274→   274→  - Total Installed auto-suggestion: fetches `/api/progress?projectId=X&limit=1` and prefills `totalInstalled = last.totalInstalled + installedPanels`. Resumes auto-suggest when project changes; stops overwriting once the user manually edits the field (tracked via a `totalEdited` flag).
+   275→   275→  - Submit handler POSTs to `/api/progress`, converting materials rows to a `Record<string,string>` object and equipment/photos to arrays (photos stored as filename strings since there is no real storage). On success: `toast.success`, shows an emerald success banner, resets the form, and refetches recent submissions.
+   276→   276→  - Recent submissions card below the form: fetches `/api/progress?limit=5` and renders rows with project name, `StatusBadge`, date, panels installed, submitter, and running total.
+   277→   277→- Ran `bun run lint` — fixed one unused `eslint-disable` directive; final result is clean (0 errors, 0 warnings).
+   278→   278→- Did NOT touch any other files (app-shell.tsx, other page components, API routes, schema, etc.) — they remain for parallel agents to complete.
+   279→   279→
+   280→   280→Stage Summary:
+   281→   281→- Files created:
+   282→   282→  - `src/components/pages/progress-page.tsx` — Progress tracking page (`ProgressPage`): filter bar, 4 stat cards, Planned vs Actual BarChart, S-Curve AreaChart, daily/weekly/monthly aggregated table, "New Entry" CTA.
+   283→   283→  - `src/components/pages/daily-entry-page.tsx` — Daily site progress submission form (`DailyEntryPage`): mobile-first Card with all required fields, auto-suggested running total, photo thumbnails with `capture="environment"`, GPS capture, recent submissions list.
+   284→   284→- Decisions:
+   285→   285→  - S-Curve uses linear interpolation for planned (start → end × totalPanels) and a step-wise max-of-running-total for actual; sampled to ≤150 points to keep recharts fast.
+   286→   286→  - Table aggregation groups by (period + projectId) so each aggregated row still identifies a single project; `totalInstalled` is max (cumulative), other numerics are summed.
+   287→   287→  - Photos are tracked in client state as `{ name, url }` pairs and stored on the server as a JSON-stringified array of filenames only (no real file storage available in this sandbox).
+   288→   288→  - Equipment uses a checkbox group instead of comma-separated tags for a touch-friendly mobile UX (works well on phones).
+   289→   289→  - Auto-suggest for `totalInstalled` is overridden when the user manually edits the field, but re-engages when project changes.
+   290→   290→- Both files are `'use client'`, match the dashboard's visual style (white Cards, emerald-600 primary, slate text, rounded-xl borders), and are responsive (mobile-first; grids collapse 2-col → 1-col on small screens).
+   291→   291→- Lint: clean (0 errors, 0 warnings).
+   292→   292→
+   293→   293→---
+   294→   294→Task ID: 8
+   295→   295→Agent: Tasks + Manpower Pages Builder
+   296→   296→Task: Build Tasks page (kanban + table) and Manpower page (workers + attendance)
+   297→   297→
+   298→   298→Work Log:
+   299→   299→- Read worklog.md foundation: API routes, shared components (PageHeader, StatCard, StatusBadge, PriorityBadge), useFetch/apiPost/apiPut/apiDelete hooks, Zustand store, constants (TASK_STATUSES, TASK_PRIORITIES, formatNumber, formatDate, formatDateTime), brand colors (emerald-600 primary), card/table/dialog patterns from dashboard-page.
+   300→   300→- Created `src/components/pages/tasks-page.tsx` exporting `TasksPage` ('use client'):
+   301→   301→  - PageHeader with emerald-600 "New Task" button (Plus icon, ListChecks header icon)
+   302→   302→  - Overdue banner (red-50) when overdueCount > 0 with "Filter Delayed" button
+   303→   303→  - Filter bar: Project Select, Status Select (Todo/InProgress/Completed/Delayed), Priority Select (Low/Medium/High/Critical), Assignee Select (from `/api/users`) + Clear + Board/List toggle
+   304→   304→  - Board view: 4 columns (Todo/InProgress/Completed/Delayed), each Card with status dot, label and count badge; each task is a small card with overdue red dot, title, project, priority dot + PriorityBadge, assignee avatar, due date, progress bar; hover-reveal edit/delete buttons
+   305→   305→  - List view: shadcn Table with sticky header; columns Title/Project/Assigned To/Priority/Status/Progress (bar+%)/Due Date/Actions; overdue rows highlighted red-50
+   306→   306→  - New/Edit Dialog: title (Input), description (Textarea), project (Select), assignedTo (Select of users — resolves assignedToName), team (Input), priority (Select), status (Select), progress (Slider 0-100 step 5), startDate (date), dueDate (date, required), remarks (Textarea); POST `/api/tasks` or PUT `/api/tasks/[id]`
+   307→   307→  - Delete: AlertDialog confirm → DELETE `/api/tasks/[id]` → refetch + sonner toast
+   308→   308→  - Loading skeleton cards; empty state card
+   309→   309→- Created `src/components/pages/manpower-page.tsx` exporting `ManpowerPage` ('use client'):
+   310→   310→  - PageHeader with emerald "Add Worker" button visible only for Admin/ProjectManager (Plus icon, Users header icon)
+   311→   311→  - 4 StatCards: Workers On Site (today present), Workers Absent (Active, not present), Total Workers, Total Man-hours (sum of last-7-day attendance)
+   312→   312→  - Team Productivity card: recharts BarChart of workingHours per team for last 7 days (top 10)
+   313→   313→  - Filter bar: Project, Team (derived from workers), Status (Active/OnLeave/Inactive) + Clear
+   314→   314→  - Tabs (Workers | Attendance Log)
+   315→   315→  - Workers table inside ScrollArea max-h-96 with sticky header; columns Emp ID, Name, Role, Team, Project, Skill (badge), Status (StatusBadge), Phone, Today's hours, Actions (Check-in / Check-out + edit + delete). Check-in/out buttons gated by today's attendance state and `canManage`.
+   316→   316→  - Check-in/out: POST `/api/workers/[id]` body `{action}` → toast + refetch; buttons disabled appropriately
+   317→   317→  - Add/Edit Worker Dialog: name, employeeId, role (Select 6 options), team (Select existing or none), project, phone, skillLevel (Junior/Intermediate/Senior), status; POST `/api/workers` or PUT `/api/workers/[id]`
+   318→   318→  - Attendance Log tab: Table inside ScrollArea max-h-96 from `/api/attendance?from=&to=` records — Date, Worker, Team, Check-in (formatDateTime), Check-out, Working Hours, Overtime badge, Status badge
+   319→   319→  - Delete: AlertDialog confirm → DELETE `/api/workers/[id]` → refetch + toast
+   320→   320→- Ran `bun run lint`: 0 errors in new files (only 1 pre-existing warning in daily-entry-page.tsx)
+   321→   321→- Confirmed dev log: tasks-page and manpower-page module-not-found errors are no longer in latest entries; remaining errors are for other agents' pages (projects/progress/materials/expenses/safety/documents/reports/settings/mobile/daily-entry).
+   322→   322→- Wrote per-agent work record at `/agent-ctx/8-tasks-manpower-pages-builder.md`.
+   323→   323→
+   324→   324→Stage Summary:
+   325→   325→- Files created (2): `src/components/pages/tasks-page.tsx`, `src/components/pages/manpower-page.tsx`
+   326→   326→- No other files modified.
+   327→   327→- Both files are `'use client'` and follow the established AYK design pattern (white cards, emerald-600 primary, sticky table headers, ScrollArea max-h-96 for long lists, sonner toasts, AlertDialog confirmations, shadcn/ui controls, responsive grid).
+   328→   328→- All required APIs (`/api/tasks`, `/api/tasks/[id]`, `/api/workers`, `/api/workers/[id]` with checkin/checkout action, `/api/attendance`, `/api/projects`, `/api/users`) consumed as specified.
+   329→   329→- Task is complete and ready for integration with the rest of the app once sibling pages land.
+   330→   330→
+   331→   331→---
+   332→   332→Task ID: 10-b
+   333→   333→Agent: Reports + Settings + Mobile Pages Builder
+   334→   334→Task: Build Reports page, Settings page, and Mobile site-progress interface
+   335→   335→
+   336→   336→Work Log:
+   337→   337→- Read /home/z/my-project/worklog.md to understand the foundation: API routes, shared components (PageHeader, StatCard, StatusBadge), Zustand store (useAppStore), constants (ROLES, APP_NAME, APP_TAGLINE, NOTIFICATION_TYPES, formatDate, etc.), use-fetch hook, design pattern.
+   338→   338→- Reviewed existing dashboard-page.tsx, shared components, shadcn/ui primitives (Dialog, Tabs, Select, Table, AlertDialog, ScrollArea, Switch, etc.) to match the established design system.
+   339→   339→- Reviewed /api/reports/[type], /api/users, /api/users/[id], /api/projects, /api/progress, /api/dashboard, /api/notifications, /api/safety/checklists route handlers to align data shapes and endpoint usage.
+   340→   340→- Created src/components/pages/reports-page.tsx ('use client', exported as ReportsPage):
+   341→   341→  * 9 report cards in a 1/2/3-column responsive grid, each with type-specific lucide icon, title, description, emerald Generate button (spinner during fetch), and an outline Print icon button.
+   342→   342→  * On Generate: GET /api/reports/[type] → stores ReportResponse in state, opens Dialog (max-w-4xl, max-h-[88vh]) with ScrollArea rendering the HTML via dangerouslySetInnerHTML and a few global table styles applied via [&] selectors.
+   343→   343→  * Dialog footer has Download HTML (Blob → AYK-<type>-<date>.html) and Print buttons; Print uses printReport(html, title) helper that opens a new window, writes a fully-styled HTML document, and calls window.print().
+   344→   344→  * Recent Reports section below the grid tracks last 6 generated reports in component state with quick regen buttons.
+   345→   345→- Created src/components/pages/settings-page.tsx ('use client', exported as SettingsPage):
+   346→   346→  * PageHeader with Settings icon. Tabs (Profile | Users | Company | Alerts | Security) in 2/5-column responsive grid.
+   347→   347→  * Profile tab: avatar (first-letter circle), Account Overview card (name, email, role badge, phone, status), Edit Profile form (name, phone, optional password) — PUT /api/users/[currentUserId] then updates Zustand user.
+   348→   348→  * Users tab (Admin-only — non-admins see lock message): table with Name/Email/Role badge/Phone/Status/Created/Actions. Add User dialog (email, name, password, role Select of ROLES, phone) → POST /api/users. Edit dialog (name, role, phone, isActive Switch, optional password) → PUT /api/users/[id]. Deactivate AlertDialog → DELETE /api/users/[id] (soft delete).
+   349→   349→  * Company tab (local-only): name (default APP_NAME), tagline (default APP_TAGLINE), address, UEN, logo upload (file input → FileReader → data URL preview), save to localStorage. Save button → toast.success("Company settings saved").
+   350→   350→  * Notifications tab (local-only): Switch toggles for each NOTIFICATION_TYPES entry, persisted to localStorage, toast on toggle.
+   351→   351→  * Security tab: change password form (current/new/confirm) PUT /api/users/[id] { password }, 2FA Switch (UI only), session info card.
+   352→   352→- Created src/components/pages/mobile-page.tsx ('use client', exported as MobilePage):
+   353→   353→  * Outer wrapper: full-bleed gradient background, centered max-w-md container.
+   354→   354→  * Phone frame: sm:rounded-[2rem] sm:border-4 sm:border-slate-800 sm:shadow-2xl overflow-hidden, min-h-[640px]. On mobile: border rounded-none (full width). Status bar with time, signal/wifi/battery icons (sm+ only).
+   355→   355→  * Emerald app header with AYK logo, name, tagline, greeting "Hi, {firstName}", current date.
+   356→   356→  * Current Project card: fetches /api/projects?status=Active, shows first project with circular SVG progress ring (overall %), location, capacity, installed/total panels with Progress bar, status badge. Empty state for no projects.
+   357→   357→  * Today's Site Progress card: fetches /api/progress?limit=1, detects if entry is today; shows 2x2 mini stat grid (installed today, total installed, man-hours, workers) with site status badge, or "No entry submitted yet" empty state with Update Progress button.
+   358→   358→  * Quick Stats 2x2 grid: workers on site, pending tasks, material alerts, PPE compliance — sourced from /api/dashboard stats; each navigates to the relevant desktop page on tap.
+   359→   359→  * Big emerald "Update Site Progress" button → setNav('daily-entry').
+   360→   360→  * Safety Checklist & Upload Photos quick-action cards (2-col). Safety card shows today's PPE compliance % if /api/safety/checklists contains an entry for today, navigates to safety page. Upload navigates to daily-entry (photo upload lives there).
+   361→   361→  * Site Status pills: Normal/Delay/Issue/Halt (SITE_STATUSES), highlights current entry's status, tap navigates to daily-entry.
+   362→   362→  * Recent Activity list: last 3 notifications from /api/notifications with severity-colored icon and timeAgo label.
+   363→   363→  * Bottom nav (4 quick actions): Home → dashboard, Projects → projects, Tasks → tasks, More → reports.
+   364→   364→  * Helper utilities: NotifIcon, timeAgo, MiniStat, QuickStatCard, BottomNav sub-components.
+   365→   365→- Ran `bun run lint` — clean (no errors). Ran `bunx tsc --noEmit --skipLibCheck` — no errors in my three files (other agents' files have unrelated Prisma include warnings).
+   366→   366→- Triggered `curl localhost:3000` to force Next.js dev recompile — "GET / 200 in 2.4s (compile: 2.0s)" confirms successful compilation.
+   367→   367→
+   368→   368→Stage Summary:
+   369→   369→- Files created (only these three, no other files modified):
+   370→   370→  1. src/components/pages/reports-page.tsx — ReportsPage component with 9 report cards, preview Dialog (max-w-4xl), Print (window.open+document.write+print), Download HTML (Blob), Recent Reports.
+   371→   371→  2. src/components/pages/settings-page.tsx — SettingsPage with 5 Tabs (Profile, Users, Company, Notifications, Security), Admin-only user table with Add/Edit/Deactivate dialogs, localStorage-backed Company + Notifications, password change, 2FA toggle.
+   372→   372→  3. src/components/pages/mobile-page.tsx — MobilePage phone-frame UI (max-w-md, sm:border-4 sm:rounded-3xl) with status bar, AYK header, current project (SVG ring), today's site progress, quick stats from /api/dashboard, big Update Progress button, PPE checklist quick card, Upload Photos, Site Status pills, recent activity, bottom nav.
+   373→   373→- Design: white cards, emerald-600 primary, responsive (mobile-first), matches dashboard visual style; uses shared PageHeader/StatCard/StatusBadge components, shadcn/ui (Tabs, Dialog, AlertDialog, Table, Select, Switch, ScrollArea, Progress, Badge, Avatar), useFetch/apiPost/apiPut/apiDelete hooks, useAppStore (user, setNav), and lib/constants (ROLES, APP_NAME, APP_TAGLINE, NOTIFICATION_TYPES, formatDate, formatNumber, SITE_STATUSES).
+   374→   374→- All three files are 'use client' as required. App-shell already imports them — verified GET / 200 OK after creation.
+   375→   375→
+   376→   376→---
+   377→   377→Task ID: 12 (Verification)
+   378→   378→Agent: Main Agent
+   379→   379→Task: Final verification of AYK PTE LTD Solar PM System
+   380→   380→
+   381→   381→Work Log:
+   382→   382→- Fixed missing /api/auth/login/route.ts (file had not persisted; recreated)
+   383→   383→- Fixed Prisma schema: added `project` relation to SafetyChecklist and SafetyIncident (were missing, causing 500 on safety APIs + reports)
+   384→   384→- Ran db:push (non-destructive, data preserved)
+   385→   385→- Restarted dev server to pick up regenerated Prisma client
+   386→   386→- Verified all 26 API routes return HTTP 200 with real seeded data
+   387→   387→- Verified login flow: POST /api/auth/login returns {name:"Alex Tan", role:"Admin"} + sets session cookie
+   388→   388→- Verified session restore: GET /api/auth/me returns logged-in user
+   389→   389→- Verified dashboard stats: activeProjects:2, completedProjects:1, delayedProjects:1, totalBudget:$24.5M, budgetUsed:$14.3M, totalWorkers:24, workersOnSite:24, pendingTasks:9, lowStockCount:2, totalIncidents:5, openIncidents:2, ppeCompliance:86%
+   390→   390→- Verified projects list returns 5 seeded projects (Tuas, Jurong, Sembcorp, Woodlands, Choa Chu Kang)
+   391→   391→- Verified reports generation works for all 9 report types
+   392→   392→- Ran `bun run lint` → 0 errors, 0 warnings
+   393→   393→- Attempted browser verification via agent-browser, but sandbox OOM (4GB) cannot hold Next.js dev server (1.3GB) + Chromium simultaneously; server is killed on browser launch. Verified full stack via comprehensive API testing instead.
+   394→   394→
+   395→   395→Stage Summary:
+   396→   396→- All 13 page components built and exported correctly
+   397→   397→- All 26 API routes functional with realistic seeded data
+   398→   398→- Auth (login/logout/session) working
+   399→   399→- CRUD operations wired for projects, tasks, workers, materials, expenses, safety, documents, users
+   400→   400→- Charts, reports, role-based permissions, mobile interface all implemented
+   401→   401→- Lint clean, TypeScript correct
+   402→   402→- Dev server running on port 3000 for user preview
+   403→   403→- Browser visual verification limited by sandbox memory (4GB); full-stack functionality confirmed via API-level testing
+   404→   404→
+   405→   405→---
+   406→   406→Task ID: POLISH-1 (Design System + Shell + Dashboard + Guide)
+   407→   407→Agent: Main Agent
+   408→   408→Task: Polish app — design system, shell, dashboard, add User Guide
+   409→   409→
+   410→   410→Work Log:
+   411→   411→- Created `src/lib/design-system.ts` with SECTION_THEMES (14 sections × full color palette) so every module has a distinct color identity (Google-like approach). Sections: overview(emerald), projects(sky), progress(indigo), tasks(amber), manpower(cyan), materials(violet), expenses(pink), safety(red), documents(teal), reports(slate), settings(stone), guide(emerald), mobile(emerald), dailyEntry(amber).
+   412→   412→- Created `src/components/shared/section-header.tsx` exporting `SectionHeader` (page-level, with color gradient strip + section pill badge) and `SubSection` (sub-group header with colored icon container).
+   413→   413→- Rewrote `src/components/shared/stat-card.tsx` to accept a `section` prop for color-coded icon containers, fixed text truncation (tighter leading, smaller but readable labels).
+   414→   414→- Created `src/components/shared/empty-state.tsx` with `EmptyState`, `LoadingState`, `CardSkeleton` for consistent empty/loading UX.
+   415→   415→- Rewrote Dashboard: KPIs now grouped into 3 categories (Operations / Financial / Workforce & Safety) with colored SubSection headers; cards use section-colored icon backgrounds; "Update Progress" button now outline style (less aggressive); charts have unit labels ("panels", "workers"); project cards have color-coded top strip by status.
+   416→   416→- Rewrote Sidebar: 3 nav groups (MAIN / FIELD / SYSTEM) with hint subtitles; active item has left accent bar; gradient avatar; cleaner user footer.
+   417→   417→- Rewrote Topbar: mobile shows compact brand inline; desktop has Help button; notifications & user menu unchanged but tightened.
+   418→   418→- Added 'guide' NavKey to constants + permissions (all roles).
+   419→   419→- Created comprehensive `src/components/pages/guide-page.tsx` — interactive User Guide with: quick-start banner, color legend (8 colors), role-based guide (7 roles, highlights current user's role), interactive tour (13 steps with prev/next, mark complete, progress bar, jump-to sidebar), tips per step, quick-reference cards.
+   420→   420→- Updated app-shell.tsx to lazy-load GuidePage.
+   421→   421→- Fixed apostrophe string-literal bugs in guide-page.tsx.
+   422→   422→- Lint passes clean.
+   423→   423→
+   424→   424→Stage Summary:
+   425→   425→- Design system files: `src/lib/design-system.ts`, `src/components/shared/section-header.tsx`, updated `stat-card.tsx`, new `empty-state.tsx`.
+   426→   426→- Polished files: `dashboard-page.tsx`, `sidebar.tsx`, `topbar.tsx`, `app-shell.tsx`, `constants.ts`.
+   427→   427→- New file: `guide-page.tsx` (~530 lines, interactive tour + role guides + color legend).
+   428→   428→- Color semantics now consistent: green=ok/progress, amber=warning/pending, red=critical/safety, pink=financial, violet=materials, cyan=workforce, sky=projects, teal=documents.
+   429→   429→

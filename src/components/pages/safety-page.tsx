@@ -2,9 +2,10 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useAppStore } from '@/store/app-store'
 import { useFetch, apiPost, apiPut } from '@/hooks/use-fetch'
-import { PageHeader } from '@/components/shared/page-header'
+import { SectionHeader, SubSection } from '@/components/shared/section-header'
 import { StatCard } from '@/components/shared/stat-card'
 import { StatusBadge } from '@/components/shared/status-badge'
+import { EmptyState } from '@/components/shared/empty-state'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { Button } from '@/components/ui/button'
@@ -23,25 +24,28 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import {
-  ShieldAlert, ShieldCheck, AlertCircle, TriangleAlert, HardHat, Plus, FileText, MapPin, Calendar, User as UserIcon, ClipboardList, TrendingUp,
+  ShieldAlert, ShieldCheck, AlertCircle, TriangleAlert, HardHat, Plus, FileText,
+  MapPin, Calendar, User as UserIcon, ClipboardList, TrendingUp, BarChart3,
+  Footprints, Hand, Link2, Sparkles, Wrench, Zap,
 } from 'lucide-react'
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip,
 } from 'recharts'
 import {
-  SAFETY_INCIDENT_LABELS, SAFETY_INCIDENT_TYPES, formatDate,
+  SAFETY_INCIDENT_LABELS, formatDate,
 } from '@/lib/constants'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
-const PPE_ITEMS: { key: string; label: string }[] = [
-  { key: 'helmet', label: 'Helmet' },
-  { key: 'safetyShoes', label: 'Safety Shoes' },
-  { key: 'gloves', label: 'Gloves' },
-  { key: 'harness', label: 'Harness' },
-  { key: 'workAreaClean', label: 'Work Area Clean' },
-  { key: 'equipmentCondition', label: 'Equipment Condition' },
-  { key: 'electricalSafety', label: 'Electrical Safety' },
+/* ---- PPE checklist items with icons ---- */
+const PPE_ITEMS: { key: string; label: string; icon: any }[] = [
+  { key: 'helmet', label: 'Helmet', icon: HardHat },
+  { key: 'safetyShoes', label: 'Safety Shoes', icon: Footprints },
+  { key: 'gloves', label: 'Gloves', icon: Hand },
+  { key: 'harness', label: 'Harness', icon: Link2 },
+  { key: 'workAreaClean', label: 'Work Area Clean', icon: Sparkles },
+  { key: 'equipmentCondition', label: 'Equipment Condition', icon: Wrench },
+  { key: 'electricalSafety', label: 'Electrical Safety', icon: Zap },
 ]
 
 const CHECKLIST_TYPES = ['PPE', 'Toolbox', 'Inspection'] as const
@@ -53,6 +57,25 @@ const CHECKLIST_TYPE_BADGE: Record<string, string> = {
   PPE: 'bg-emerald-100 text-emerald-700 border-emerald-200',
   Toolbox: 'bg-sky-100 text-sky-700 border-sky-200',
   Inspection: 'bg-violet-100 text-violet-700 border-violet-200',
+}
+
+/* Incident type → colored left border + icon styling */
+const INCIDENT_TYPE_STYLE: Record<string, { border: string; iconBg: string; iconFg: string; Icon: any }> = {
+  Incident: { border: 'border-l-red-500', iconBg: 'bg-red-50', iconFg: 'text-red-600', Icon: AlertCircle },
+  NearMiss: { border: 'border-l-amber-500', iconBg: 'bg-amber-50', iconFg: 'text-amber-600', Icon: TriangleAlert },
+  UnsafeCondition: { border: 'border-l-sky-500', iconBg: 'bg-sky-50', iconFg: 'text-sky-600', Icon: HardHat },
+}
+
+/* Compliance % color helper (>=90 green, 70-89 amber, <70 red) */
+function complianceColor(pct: number): string {
+  if (pct >= 90) return '[&_>div]:bg-emerald-500'
+  if (pct >= 70) return '[&_>div]:bg-amber-500'
+  return '[&_>div]:bg-red-500'
+}
+function complianceText(pct: number): string {
+  if (pct >= 90) return 'text-emerald-700'
+  if (pct >= 70) return 'text-amber-700'
+  return 'text-red-700'
 }
 
 export function SafetyPage() {
@@ -84,11 +107,11 @@ export function SafetyPage() {
 
   // ----- Stats -----
   const stats = useMemo(() => {
-    const totalIncidents = incidents.length
+    const totalIncidents = (incidents?.length ?? 0)
     const openIncidents = incidents.filter(i => i.status === 'Open').length
     const closedIncidents = incidents.filter(i => i.status === 'Closed').length
     const nearMisses = incidents.filter(i => i.type === 'NearMiss').length
-    const last30 = checklists.slice(0, 30)
+    const last30 = (checklists || []).slice(0, 30)
     const ppeAvg = last30.length > 0
       ? Math.round(last30.reduce((s, c) => s + (c.compliancePct || 0), 0) / last30.length)
       : 0
@@ -98,7 +121,7 @@ export function SafetyPage() {
   // ----- PPE Compliance trend (last 14 days) -----
   const trendData = useMemo(() => {
     const byDay = new Map<string, { sum: number; count: number }>()
-    for (const c of checklists) {
+    for (const c of checklists || []) {
       const d = new Date(c.date)
       const key = d.toISOString().slice(0, 10)
       const cur = byDay.get(key) || { sum: 0, count: 0 }
@@ -106,7 +129,6 @@ export function SafetyPage() {
       cur.count += 1
       byDay.set(key, cur)
     }
-    // build last 14 days range
     const days: { date: string; label: string; compliance: number }[] = []
     const today = new Date()
     for (let i = 13; i >= 0; i--) {
@@ -125,21 +147,21 @@ export function SafetyPage() {
 
   // ----- PPE per-item compliance -----
   const ppePerItem = useMemo(() => {
-    const counts = PPE_ITEMS.map(item => {
-      const total = checklists.length
-      const checked = checklists.filter(c => c[item.key] === true).length
+    const total = checklists?.length ?? 0
+    return PPE_ITEMS.map(item => {
+      const checked = (checklists || []).filter(c => c[item.key] === true).length
       const pct = total > 0 ? Math.round((checked / total) * 100) : 0
       return { ...item, pct, checked, total }
     })
-    return counts
   }, [checklists])
 
   return (
     <div className="space-y-6">
-      <PageHeader
+      <SectionHeader
+        section="safety"
         title="Safety Management"
-        description="Safety checklists, incidents and compliance"
-        icon={<ShieldAlert className="h-5 w-5" />}
+        description="PPE checklists, incidents and compliance"
+        icon={<ShieldAlert className="h-6 w-6" />}
         actions={
           <>
             <Button onClick={() => setClDialogOpen(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white">
@@ -152,20 +174,58 @@ export function SafetyPage() {
         }
       />
 
-      {/* Stat cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
-        <StatCard title="Total Incidents" value={stats.totalIncidents} subtitle="All time" icon={<ShieldAlert className="h-5 w-5" />} accent="red" />
-        <StatCard title="Open Incidents" value={stats.openIncidents} subtitle="Need attention" icon={<AlertCircle className="h-5 w-5" />} accent="orange" />
-        <StatCard title="Closed Incidents" value={stats.closedIncidents} subtitle="Resolved" icon={<ShieldCheck className="h-5 w-5" />} accent="green" />
-        <StatCard title="Near Misses" value={stats.nearMisses} subtitle="Reported" icon={<TriangleAlert className="h-5 w-5" />} accent="blue" />
-        <StatCard title="PPE Compliance" value={`${stats.ppeAvg}%`} subtitle="Avg last 30 checklists" icon={<ShieldCheck className="h-5 w-5" />} accent="green" />
+      {/* Safety Overview — KPI grid */}
+      <div>
+        <SubSection
+          section="safety"
+          title="Safety Overview"
+          description="Key safety metrics across all projects"
+          icon={<BarChart3 className="h-4 w-4" />}
+        />
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
+          <StatCard
+            title="Total Incidents"
+            value={stats.totalIncidents ?? 0}
+            subtitle="All time"
+            icon={<ShieldAlert className="h-5 w-5" />}
+            section="safety"
+          />
+          <StatCard
+            title="Open Incidents"
+            value={stats.openIncidents ?? 0}
+            subtitle="Need attention"
+            icon={<AlertCircle className="h-5 w-5" />}
+            section="safety"
+          />
+          <StatCard
+            title="Closed Incidents"
+            value={stats.closedIncidents ?? 0}
+            subtitle="Resolved"
+            icon={<ShieldCheck className="h-5 w-5" />}
+            section="safety"
+          />
+          <StatCard
+            title="Near Misses"
+            value={stats.nearMisses ?? 0}
+            subtitle="Reported"
+            icon={<TriangleAlert className="h-5 w-5" />}
+            section="safety"
+          />
+          <StatCard
+            title="PPE Compliance"
+            value={`${stats.ppeAvg ?? 0}%`}
+            subtitle="Avg last 30 checklists"
+            icon={<ShieldCheck className="h-5 w-5" />}
+            section="safety"
+          />
+        </div>
       </div>
 
       {/* PPE Compliance Trend Chart */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base font-semibold flex items-center gap-2">
-            <TrendingUp className="h-4 w-4 text-emerald-600" />
+            <TrendingUp className="h-4 w-4 text-red-600" />
             PPE Compliance Trend — Last 14 Days
           </CardTitle>
           <CardDescription className="text-xs">Daily average compliance score from checklists</CardDescription>
@@ -181,7 +241,7 @@ export function SafetyPage() {
                 formatter={(v: any) => [`${v}%`, 'Compliance']}
                 labelFormatter={(l) => `Date ${l}`}
               />
-              <Line type="monotone" dataKey="compliance" stroke="#10b981" strokeWidth={2.5} dot={{ r: 4, fill: '#10b981' }} name="Compliance" />
+              <Line type="monotone" dataKey="compliance" stroke="#ef4444" strokeWidth={2.5} dot={{ r: 4, fill: '#ef4444' }} name="Compliance" />
             </LineChart>
           </ResponsiveContainer>
         </CardContent>
@@ -219,7 +279,7 @@ export function SafetyPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <Button onClick={() => setClDialogOpen(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                <Button onClick={() => setClDialogOpen(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white sm:w-auto w-full">
                   <Plus className="h-4 w-4 mr-2" /> New Checklist
                 </Button>
               </div>
@@ -229,24 +289,30 @@ export function SafetyPage() {
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base font-semibold flex items-center gap-2">
-                <ClipboardList className="h-4 w-4 text-emerald-600" /> Safety Checklists
+                <ClipboardList className="h-4 w-4 text-red-600" /> Safety Checklists
               </CardTitle>
-              <CardDescription className="text-xs">{checklists.length} checklist(s) found</CardDescription>
+              <CardDescription className="text-xs">{checklists?.length ?? 0} checklist(s) found</CardDescription>
             </CardHeader>
             <CardContent className="p-0">
               {clLoading ? (
                 <div className="p-4 space-y-3">
                   {Array.from({ length: 5 }).map((_, i) => (
-                    <div key={i} className="h-10 rounded bg-slate-100 animate-pulse" />
+                    <div key={i} className="h-12 rounded bg-slate-100 animate-pulse" />
                   ))}
                 </div>
-              ) : checklists.length === 0 ? (
-                <div className="p-8 text-center text-sm text-muted-foreground">
-                  <ShieldCheck className="h-10 w-10 mx-auto mb-2 text-slate-300" />
-                  No checklists found. Create one to get started.
-                </div>
+              ) : (checklists?.length ?? 0) === 0 ? (
+                <EmptyState
+                  icon={<ShieldCheck className="h-6 w-6" />}
+                  title="No checklists found"
+                  description="Create a safety checklist to start tracking PPE compliance."
+                  action={
+                    <Button onClick={() => setClDialogOpen(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                      <Plus className="h-4 w-4 mr-2" /> New Checklist
+                    </Button>
+                  }
+                />
               ) : (
-                <ScrollArea className="h-[28rem]">
+                <ScrollArea className="max-h-[500px]">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -260,26 +326,29 @@ export function SafetyPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {checklists.map((c: any) => (
-                        <TableRow key={c.id}>
-                          <TableCell className="whitespace-nowrap text-sm">{formatDate(c.date)}</TableCell>
-                          <TableCell className="text-sm max-w-[160px] truncate">{c.project?.name || '—'}</TableCell>
-                          <TableCell>
-                            <Badge variant="outline" className={cn('font-medium', CHECKLIST_TYPE_BADGE[c.checklistType] || 'bg-slate-100 text-slate-700 border-slate-200')}>
-                              {c.checklistType}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="w-40">
-                            <div className="flex items-center gap-2">
-                              <Progress value={c.compliancePct || 0} className="h-1.5 flex-1" />
-                              <span className="text-xs font-semibold tabular-nums w-9 text-right">{c.compliancePct || 0}%</span>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-sm">{c.conductedByName || '—'}</TableCell>
-                          <TableCell className="text-sm max-w-[140px] truncate">{c.location || '—'}</TableCell>
-                          <TableCell className="text-sm max-w-[200px] truncate text-muted-foreground">{c.remarks || '—'}</TableCell>
-                        </TableRow>
-                      ))}
+                      {checklists.map((c: any) => {
+                        const pct = c.compliancePct || 0
+                        return (
+                          <TableRow key={c.id}>
+                            <TableCell className="whitespace-nowrap text-sm">{formatDate(c.date)}</TableCell>
+                            <TableCell className="text-sm max-w-[160px] truncate">{c.project?.name || '—'}</TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className={cn('font-medium', CHECKLIST_TYPE_BADGE[c.checklistType] || 'bg-slate-100 text-slate-700 border-slate-200')}>
+                                {c.checklistType}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="w-40">
+                              <div className="flex items-center gap-2">
+                                <Progress value={pct} className={cn('h-1.5 flex-1', complianceColor(pct))} />
+                                <span className={cn('text-xs font-semibold tabular-nums w-9 text-right', complianceText(pct))}>{pct}%</span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-sm">{c.conductedByName || '—'}</TableCell>
+                            <TableCell className="text-sm max-w-[140px] truncate">{c.location || '—'}</TableCell>
+                            <TableCell className="text-sm max-w-[200px] truncate text-muted-foreground">{c.remarks || '—'}</TableCell>
+                          </TableRow>
+                        )
+                      })}
                     </TableBody>
                   </Table>
                 </ScrollArea>
@@ -323,7 +392,7 @@ export function SafetyPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <Button onClick={() => setIncDialogOpen(true)} variant="outline" className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700">
+                <Button onClick={() => setIncDialogOpen(true)} variant="outline" className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 sm:w-auto w-full">
                   <AlertCircle className="h-4 w-4 mr-2" /> Report Incident
                 </Button>
               </div>
@@ -336,11 +405,19 @@ export function SafetyPage() {
                 <Card key={i} className="animate-pulse"><CardContent className="p-5 h-44" /></Card>
               ))}
             </div>
-          ) : incidents.length === 0 ? (
+          ) : (incidents?.length ?? 0) === 0 ? (
             <Card>
-              <CardContent className="p-8 text-center text-sm text-muted-foreground">
-                <ShieldCheck className="h-10 w-10 mx-auto mb-2 text-slate-300" />
-                No incidents reported. Stay safe out there!
+              <CardContent className="p-0">
+                <EmptyState
+                  icon={<ShieldCheck className="h-6 w-6" />}
+                  title="No incidents reported"
+                  description="Stay safe out there! Report a new incident using the button above."
+                  action={
+                    <Button onClick={() => setIncDialogOpen(true)} variant="outline" className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700">
+                      <AlertCircle className="h-4 w-4 mr-2" /> Report Incident
+                    </Button>
+                  }
+                />
               </CardContent>
             </Card>
           ) : (
@@ -355,21 +432,21 @@ export function SafetyPage() {
         {/* ============== PPE COMPLIANCE TAB ============== */}
         <TabsContent value="ppe" className="space-y-4">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <Card className="lg:col-span-1 bg-emerald-50/40 border-emerald-200">
+            <Card className="lg:col-span-1 bg-red-50/40 border-red-200">
               <CardHeader className="pb-3">
-                <CardTitle className="text-base font-semibold flex items-center gap-2 text-emerald-700">
+                <CardTitle className="text-base font-semibold flex items-center gap-2 text-red-700">
                   <ShieldCheck className="h-4 w-4" /> Overall Compliance
                 </CardTitle>
                 <CardDescription className="text-xs">Average across all checklists</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="flex items-baseline gap-2">
-                  <span className="text-4xl font-bold text-emerald-700 tabular-nums">{stats.ppeAvg}%</span>
-                  <span className="text-sm text-emerald-600">/ 100%</span>
+                  <span className={cn('text-4xl font-bold tabular-nums', complianceText(stats.ppeAvg))}>{stats.ppeAvg ?? 0}%</span>
+                  <span className="text-sm text-red-600">/ 100%</span>
                 </div>
-                <Progress value={stats.ppeAvg} className="h-2.5 mt-3" />
+                <Progress value={stats.ppeAvg ?? 0} className={cn('h-2.5 mt-3', complianceColor(stats.ppeAvg ?? 0))} />
                 <p className="text-xs text-muted-foreground mt-3">
-                  Based on {checklists.length} checklist{checklists.length === 1 ? '' : 's'} submitted.
+                  Based on {checklists?.length ?? 0} checklist{(checklists?.length ?? 0) === 1 ? '' : 's'} submitted.
                 </p>
               </CardContent>
             </Card>
@@ -377,26 +454,36 @@ export function SafetyPage() {
             <Card className="lg:col-span-2">
               <CardHeader className="pb-3">
                 <CardTitle className="text-base font-semibold flex items-center gap-2">
-                  <ClipboardList className="h-4 w-4 text-emerald-600" /> PPE Item Compliance
+                  <ClipboardList className="h-4 w-4 text-red-600" /> PPE Item Compliance
                 </CardTitle>
                 <CardDescription className="text-xs">Percentage of checklists where each item was checked</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
-                {ppePerItem.map(item => (
-                  <div key={item.key} className="space-y-1">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="font-medium text-slate-700">{item.label}</span>
-                      <span className="tabular-nums font-semibold text-slate-900">{item.pct}%</span>
+                {ppePerItem.map(item => {
+                  const ItemIcon = item.icon
+                  return (
+                    <div key={item.key} className="space-y-1">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="font-medium text-slate-700 flex items-center gap-2">
+                          <ItemIcon className="h-4 w-4 text-slate-500" />
+                          {item.label}
+                        </span>
+                        <span className={cn('tabular-nums font-semibold', complianceText(item.pct))}>{item.pct}%</span>
+                      </div>
+                      <Progress
+                        value={item.pct}
+                        className={cn('h-2', complianceColor(item.pct))}
+                      />
+                      <p className="text-[11px] text-muted-foreground">{item.checked} of {item.total} checklists passed</p>
                     </div>
-                    <Progress
-                      value={item.pct}
-                      className={cn('h-2', item.pct >= 90 ? '[&_>div]:bg-emerald-500' : item.pct >= 70 ? '[&_>div]:bg-amber-500' : '[&_>div]:bg-red-500')}
-                    />
-                    <p className="text-[11px] text-muted-foreground">{item.checked} of {item.total} checklists passed</p>
-                  </div>
-                ))}
-                {checklists.length === 0 && (
-                  <p className="text-sm text-muted-foreground text-center py-4">No checklists to analyze.</p>
+                  )
+                })}
+                {(checklists?.length ?? 0) === 0 && (
+                  <EmptyState
+                    icon={<ClipboardList className="h-6 w-6" />}
+                    title="No checklists to analyze"
+                    description="Submit a checklist to see PPE item compliance."
+                  />
                 )}
               </CardContent>
             </Card>
@@ -467,15 +554,15 @@ export function SafetyPage() {
 /* ----------------------------------------------------------------- */
 
 function IncidentCard({ incident, onEdit }: { incident: any; onEdit: () => void }) {
-  const Icon = incident.type === 'Incident' ? AlertCircle : incident.type === 'NearMiss' ? TriangleAlert : HardHat
-  const iconColor = incident.type === 'Incident' ? 'text-red-600 bg-red-50' : incident.type === 'NearMiss' ? 'text-amber-600 bg-amber-50' : 'text-sky-600 bg-sky-50'
+  const style = INCIDENT_TYPE_STYLE[incident.type] || INCIDENT_TYPE_STYLE.Incident
+  const Icon = style.Icon
   const label = SAFETY_INCIDENT_LABELS[incident.type] || incident.type
   return (
-    <Card className="overflow-hidden hover:shadow-md transition-shadow border-border/60 flex flex-col">
+    <Card className={cn('overflow-hidden hover:shadow-md transition-shadow border-border/60 flex flex-col border-l-4', style.border)}>
       <CardContent className="p-5 flex-1 flex flex-col gap-3">
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
-            <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', iconColor)}>
+            <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', style.iconBg, style.iconFg)}>
               <Icon className="h-5 w-5" />
             </div>
             <div className="min-w-0">
@@ -489,10 +576,10 @@ function IncidentCard({ incident, onEdit }: { incident: any; onEdit: () => void 
         </div>
 
         <div className="text-xs text-muted-foreground flex items-center gap-1">
-          <MapPin className="h-3 w-3" /> {incident.project?.name || 'No project'} {incident.location ? `· ${incident.location}` : ''}
+          <MapPin className="h-3 w-3 shrink-0" /> {incident.project?.name || 'No project'} {incident.location ? `· ${incident.location}` : ''}
         </div>
 
-        <p className="text-sm text-slate-700 line-clamp-3">{incident.description}</p>
+        <p className="text-sm text-slate-700 line-clamp-3">{incident.description || '—'}</p>
 
         {incident.actionTaken && (
           <div className="rounded-md bg-emerald-50 border border-emerald-100 px-3 py-2">
@@ -507,7 +594,7 @@ function IncidentCard({ incident, onEdit }: { incident: any; onEdit: () => void 
 
         <div className="flex items-center justify-between pt-2 mt-auto border-t border-slate-100">
           <StatusBadge status={incident.status} />
-          <Button size="sm" variant="outline" onClick={onEdit} className="h-7 text-xs">
+          <Button size="sm" variant="outline" onClick={onEdit} className="h-8 text-xs">
             <FileText className="h-3 w-3 mr-1" /> Edit
           </Button>
         </div>
@@ -571,9 +658,11 @@ function NewChecklistDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto ayk-scrollbar">
+      <DialogContent className="w-full sm:max-w-lg max-h-[90vh] overflow-y-auto ayk-scrollbar">
         <DialogHeader>
-          <DialogTitle>New Safety Checklist</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            <ClipboardList className="h-4 w-4 text-red-600" /> New Safety Checklist
+          </DialogTitle>
           <DialogDescription>Conduct a PPE / Toolbox / Inspection checklist and record compliance.</DialogDescription>
         </DialogHeader>
 
@@ -619,16 +708,23 @@ function NewChecklistDialog({
             </Badge>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            {PPE_ITEMS.map(item => (
-              <div key={item.key} className="flex items-center space-x-2 rounded-md border border-slate-200 px-3 py-2.5 hover:bg-slate-50 transition">
-                <Checkbox
-                  id={`chk-${item.key}`}
-                  checked={checks[item.key]}
-                  onCheckedChange={(v) => setChecks(prev => ({ ...prev, [item.key]: !!v }))}
-                />
-                <Label htmlFor={`chk-${item.key}`} className="text-sm cursor-pointer flex-1">{item.label}</Label>
-              </div>
-            ))}
+            {PPE_ITEMS.map(item => {
+              const ItemIcon = item.icon
+              return (
+                <div key={item.key} className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2.5 hover:bg-slate-50 transition">
+                  <Checkbox
+                    id={`chk-${item.key}`}
+                    checked={checks[item.key]}
+                    onCheckedChange={(v) => setChecks(prev => ({ ...prev, [item.key]: !!v }))}
+                    className="h-5 w-5"
+                  />
+                  <Label htmlFor={`chk-${item.key}`} className="text-sm cursor-pointer flex-1 flex items-center gap-2">
+                    <ItemIcon className="h-4 w-4 text-slate-500 shrink-0" />
+                    <span className="truncate">{item.label}</span>
+                  </Label>
+                </div>
+              )
+            })}
           </div>
         </div>
 
@@ -709,9 +805,11 @@ function IncidentDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto ayk-scrollbar">
+      <DialogContent className="w-full sm:max-w-lg max-h-[90vh] overflow-y-auto ayk-scrollbar">
         <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 text-red-600" /> {title}
+          </DialogTitle>
           <DialogDescription>Record a safety incident, near-miss or unsafe condition.</DialogDescription>
         </DialogHeader>
 

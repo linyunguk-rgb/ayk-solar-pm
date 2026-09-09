@@ -1,0 +1,865 @@
+     1→'use client'
+     2→
+     3→import { useMemo, useState } from 'react'
+     4→import { useAppStore } from '@/store/app-store'
+     5→import { useFetch, apiPost, apiPut, apiDelete } from '@/hooks/use-fetch'
+     6→import { PageHeader } from '@/components/shared/page-header'
+     7→import { StatCard } from '@/components/shared/stat-card'
+     8→import { StatusBadge } from '@/components/shared/status-badge'
+     9→import {
+    10→  Card, CardContent, CardHeader, CardTitle, CardDescription,
+    11→} from '@/components/ui/card'
+    12→import { Button } from '@/components/ui/button'
+    13→import { Badge } from '@/components/ui/badge'
+    14→import {
+    15→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    16→} from '@/components/ui/select'
+    17→import { Input } from '@/components/ui/input'
+    18→import { Label } from '@/components/ui/label'
+    19→import { ScrollArea } from '@/components/ui/scroll-area'
+    20→import {
+    21→  Table, TableHeader, TableBody, TableHead, TableRow, TableCell,
+    22→} from '@/components/ui/table'
+    23→import {
+    24→  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+    25→} from '@/components/ui/dialog'
+    26→import {
+    27→  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
+    28→  AlertDialogDescription, AlertDialogFooter, AlertDialogAction, AlertDialogCancel,
+    29→} from '@/components/ui/alert-dialog'
+    30→import { Skeleton } from '@/components/ui/skeleton'
+    31→import { Progress } from '@/components/ui/progress'
+    32→import {
+    33→  DollarSign, Plus, Check, X, Pencil, Trash2, Upload, TrendingUp,
+    34→  TrendingDown, Wallet, CheckCircle2, Clock, XCircle, FileText,
+    35→} from 'lucide-react'
+    36→import {
+    37→  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid,
+    38→  Tooltip as RTooltip, Legend, PieChart, Pie, Cell,
+    39→} from 'recharts'
+    40→import {
+    41→  EXPENSE_CATEGORIES, formatCurrency, formatDate,
+    42→} from '@/lib/constants'
+    43→import { toast } from 'sonner'
+    44→import { cn } from '@/lib/utils'
+    45→
+    46→// Category badge colors (no indigo)
+    47→const EXPENSE_CATEGORY_BADGE: Record<string, string> = {
+    48→  'Tools & Equipment': 'bg-amber-100 text-amber-700 border-amber-200 hover:bg-amber-100',
+    49→  'Transport': 'bg-sky-100 text-sky-700 border-sky-200 hover:bg-sky-100',
+    50→  'Accommodation': 'bg-violet-100 text-violet-700 border-violet-200 hover:bg-violet-100',
+    51→  'Fuel': 'bg-orange-100 text-orange-700 border-orange-200 hover:bg-orange-100',
+    52→  'Materials': 'bg-emerald-100 text-emerald-700 border-emerald-200 hover:bg-emerald-100',
+    53→  'Labour': 'bg-teal-100 text-teal-700 border-teal-200 hover:bg-teal-100',
+    54→  'Miscellaneous': 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-100',
+    55→}
+    56→
+    57→const PIE_COLORS = ['#10b981', '#0ea5e9', '#f59e0b', '#ef4444', '#a78bfa', '#14b8a6', '#64748b']
+    58→
+    59→function ExpenseCategoryBadge({ category }: { category: string }) {
+    60→  return (
+    61→    <Badge
+    62→      variant="outline"
+    63→      className={cn('font-medium', EXPENSE_CATEGORY_BADGE[category] || EXPENSE_CATEGORY_BADGE.Miscellaneous)}
+    64→    >
+    65→      {category}
+    66→    </Badge>
+    67→  )
+    68→}
+    69→
+    70→function todayISO(): string {
+    71→  const d = new Date()
+    72→  const tz = d.getTimezoneOffset() * 60000
+    73→  return new Date(d.getTime() - tz).toISOString().slice(0, 10)
+    74→}
+    75→
+    76→interface ExpenseFormState {
+    77→  date: string
+    78→  projectId: string
+    79→  category: string
+    80→  description: string
+    81→  amount: number
+    82→  paidBy: string
+    83→  approvalStatus: 'Pending' | 'Approved' | 'Rejected'
+    84→  receiptUrl: string
+    85→}
+    86→
+    87→const EMPTY_EXPENSE_FORM: ExpenseFormState = {
+    88→  date: todayISO(),
+    89→  projectId: 'none',
+    90→  category: 'Tools & Equipment',
+    91→  description: '',
+    92→  amount: 0,
+    93→  paidBy: '',
+    94→  approvalStatus: 'Pending',
+    95→  receiptUrl: '',
+    96→}
+    97→
+    98→export function ExpensesPage() {
+    99→  const { user } = useAppStore()
+   100→
+   101→  // Filters
+   102→  const [projectFilter, setProjectFilter] = useState<string>('all')
+   103→  const [categoryFilter, setCategoryFilter] = useState<string>('all')
+   104→  const [approvalFilter, setApprovalFilter] = useState<string>('all')
+   105→
+   106→  // Dialog state
+   107→  const [expenseDialog, setExpenseDialog] = useState<{ open: boolean; mode: 'add' | 'edit'; expense?: any }>({
+   108→    open: false, mode: 'add',
+   109→  })
+   110→  const [eForm, setEForm] = useState<ExpenseFormState>(EMPTY_EXPENSE_FORM)
+   111→  const [saving, setSaving] = useState(false)
+   112→
+   113→  // Delete confirmation
+   114→  const [deleteId, setDeleteId] = useState<string | null>(null)
+   115→
+   116→  // Fetches
+   117→  const { data: expensesData, loading: loadingExpenses, refetch: refetchExpenses } = useFetch<any>('/api/expenses')
+   118→  const { data: projectsData, loading: loadingProjects } = useFetch<any>('/api/projects')
+   119→
+   120→  const expenses = (expensesData?.expenses || []) as any[]
+   121→  const projects = (projectsData?.projects || []) as any[]
+   122→
+   123→  // Filtered expenses
+   124→  const filteredExpenses = useMemo(() => {
+   125→    let arr = [...expenses]
+   126→    if (projectFilter !== 'all') arr = arr.filter((e) => e.projectId === projectFilter)
+   127→    if (categoryFilter !== 'all') arr = arr.filter((e) => e.category === categoryFilter)
+   128→    if (approvalFilter !== 'all') arr = arr.filter((e) => e.approvalStatus === approvalFilter)
+   129→    return arr
+   130→  }, [expenses, projectFilter, categoryFilter, approvalFilter])
+   131→
+   132→  // Stats
+   133→  const stats = useMemo(() => {
+   134→    const total = expenses.reduce((s, e) => s + Number(e.amount), 0)
+   135→    const approved = expenses.filter((e) => e.approvalStatus === 'Approved')
+   136→    const pending = expenses.filter((e) => e.approvalStatus === 'Pending')
+   137→    const rejected = expenses.filter((e) => e.approvalStatus === 'Rejected')
+   138→    return {
+   139→      total,
+   140→      approvedSum: approved.reduce((s, e) => s + Number(e.amount), 0),
+   141→      approvedCount: approved.length,
+   142→      pendingSum: pending.reduce((s, e) => s + Number(e.amount), 0),
+   143→      pendingCount: pending.length,
+   144→      rejectedSum: rejected.reduce((s, e) => s + Number(e.amount), 0),
+   145→      rejectedCount: rejected.length,
+   146→    }
+   147→  }, [expenses])
+   148→
+   149→  // Approved expense sums per project
+   150→  const approvedByProject = useMemo(() => {
+   151→    const map: Record<string, number> = {}
+   152→    for (const e of expenses) {
+   153→      if (e.approvalStatus !== 'Approved') continue
+   154→      if (!e.projectId) continue
+   155→      map[e.projectId] = (map[e.projectId] || 0) + Number(e.amount)
+   156→    }
+   157→    return map
+   158→  }, [expenses])
+   159→
+   160→  // Budget vs Actual chart data
+   161→  const budgetChart = useMemo(() => {
+   162→    return projects.map((p) => ({
+   163→      name: p.name?.length > 14 ? p.name.slice(0, 14) + '…' : p.name,
+   164→      budget: Number(p.budget) || 0,
+   165→      actual: (Number(p.actualCost) || 0) + (approvedByProject[p.id] || 0),
+   166→    }))
+   167→  }, [projects, approvedByProject])
+   168→
+   169→  // Expense by category
+   170→  const categoryChart = useMemo(() => {
+   171→    const map: Record<string, number> = {}
+   172→    for (const e of expenses) {
+   173→      if (e.approvalStatus === 'Rejected') continue
+   174→      map[e.category] = (map[e.category] || 0) + Number(e.amount)
+   175→    }
+   176→    return EXPENSE_CATEGORIES.filter((c) => (map[c] || 0) > 0).map((c) => ({
+   177→      name: c,
+   178→      value: map[c] || 0,
+   179→    }))
+   180→  }, [expenses])
+   181→
+   182→  // Project profitability
+   183→  const profitability = useMemo(() => {
+   184→    return projects.map((p) => {
+   185→      const budget = Number(p.budget) || 0
+   186→      const actualCost = Number(p.actualCost) || 0
+   187→      const expensesApproved = approvedByProject[p.id] || 0
+   188→      const totalSpent = actualCost + expensesApproved
+   189→      const profit = budget - totalSpent
+   190→      const marginPct = budget > 0 ? Math.round((profit / budget) * 1000) / 10 : 0
+   191→      const usedPct = budget > 0 ? Math.min(100, Math.round((totalSpent / budget) * 1000) / 10) : 0
+   192→      return {
+   193→        id: p.id,
+   194→        name: p.name,
+   195→        budget,
+   196→        actualCost,
+   197→        expensesApproved,
+   198→        totalSpent,
+   199→        profit,
+   200→        marginPct,
+   201→        usedPct,
+   202→        overBudget: totalSpent > budget,
+   203→      }
+   204→    })
+   205→  }, [projects, approvedByProject])
+   206→
+   207→  // ---------- Handlers ----------
+   208→  const openAddExpense = () => {
+   209→    setEForm(EMPTY_EXPENSE_FORM)
+   210→    setExpenseDialog({ open: true, mode: 'add' })
+   211→  }
+   212→
+   213→  const openEditExpense = (e: any) => {
+   214→    const d = e.date ? new Date(e.date) : new Date()
+   215→    const tz = d.getTimezoneOffset() * 60000
+   216→    setEForm({
+   217→      date: new Date(d.getTime() - tz).toISOString().slice(0, 10),
+   218→      projectId: e.projectId || 'none',
+   219→      category: e.category || 'Tools & Equipment',
+   220→      description: e.description || '',
+   221→      amount: Number(e.amount) || 0,
+   222→      paidBy: e.paidBy || '',
+   223→      approvalStatus: e.approvalStatus || 'Pending',
+   224→      receiptUrl: e.receiptUrl || '',
+   225→    })
+   226→    setExpenseDialog({ open: true, mode: 'edit', expense: e })
+   227→  }
+   228→
+   229→  const submitExpense = async () => {
+   230→    if (!eForm.description.trim()) {
+   231→      toast.error('Description is required')
+   232→      return
+   233→    }
+   234→    if (!eForm.amount || Number(eForm.amount) <= 0) {
+   235→      toast.error('Amount must be greater than 0')
+   236→      return
+   237→    }
+   238→    setSaving(true)
+   239→    try {
+   240→      const body = {
+   241→        date: eForm.date ? new Date(eForm.date).toISOString() : new Date().toISOString(),
+   242→        projectId: eForm.projectId && eForm.projectId !== 'none' ? eForm.projectId : null,
+   243→        category: eForm.category,
+   244→        description: eForm.description.trim(),
+   245→        amount: Number(eForm.amount),
+   246→        paidBy: eForm.paidBy?.trim() || null,
+   247→        approvalStatus: eForm.approvalStatus,
+   248→        receiptUrl: eForm.receiptUrl?.trim() || null,
+   249→      }
+   250→      if (expenseDialog.mode === 'add') {
+   251→        await apiPost('/api/expenses', body)
+   252→        toast.success('Expense recorded')
+   253→      } else if (expenseDialog.mode === 'edit' && expenseDialog.expense?.id) {
+   254→        await apiPut(`/api/expenses/${expenseDialog.expense.id}`, body)
+   255→        toast.success('Expense updated')
+   256→      }
+   257→      setExpenseDialog({ open: false, mode: 'add' })
+   258→      refetchExpenses()
+   259→    } catch (e: any) {
+   260→      toast.error(e.message || 'Failed to save expense')
+   261→    } finally {
+   262→      setSaving(false)
+   263→    }
+   264→  }
+   265→
+   266→  const setApproval = async (id: string, status: 'Approved' | 'Rejected') => {
+   267→    try {
+   268→      await apiPut(`/api/expenses/${id}`, { approvalStatus: status })
+   269→      toast.success(`Expense ${status.toLowerCase()}`)
+   270→      refetchExpenses()
+   271→    } catch (e: any) {
+   272→      toast.error(e.message || `Failed to ${status.toLowerCase()} expense`)
+   273→    }
+   274→  }
+   275→
+   276→  const confirmDelete = async () => {
+   277→    if (!deleteId) return
+   278→    try {
+   279→      await apiDelete(`/api/expenses/${deleteId}`)
+   280→      toast.success('Expense deleted')
+   281→      refetchExpenses()
+   282→    } catch (e: any) {
+   283→      toast.error(e.message || 'Failed to delete expense')
+   284→    } finally {
+   285→      setDeleteId(null)
+   286→    }
+   287→  }
+   288→
+   289→  const onReceiptUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+   290→    const file = e.target.files?.[0]
+   291→    if (file) {
+   292→      setEForm((s) => ({ ...s, receiptUrl: file.name }))
+   293→      toast.success(`Receipt "${file.name}" attached`)
+   294→    }
+   295→  }
+   296→
+   297→  // ---------- Render ----------
+   298→  if (loadingExpenses && !expensesData) {
+   299→    return (
+   300→      <div className="space-y-6">
+   301→        <PageHeader
+   302→          title="Expense Management"
+   303→          description="Track project expenses and approvals"
+   304→          icon={<DollarSign className="h-5 w-5" />}
+   305→        />
+   306→        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+   307→          {Array.from({ length: 4 }).map((_, i) => (
+   308→            <Card key={i}><CardContent className="p-4 h-28"><Skeleton className="h-full w-full" /></CardContent></Card>
+   309→          ))}
+   310→        </div>
+   311→        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+   312→          <Card><CardContent className="p-4"><Skeleton className="h-72 w-full" /></CardContent></Card>
+   313→          <Card><CardContent className="p-4"><Skeleton className="h-72 w-full" /></CardContent></Card>
+   314→        </div>
+   315→      </div>
+   316→    )
+   317→  }
+   318→
+   319→  return (
+   320→    <div className="space-y-6">
+   321→      <PageHeader
+   322→        title="Expense Management"
+   323→        description="Track project expenses and approvals"
+   324→        icon={<DollarSign className="h-5 w-5" />}
+   325→        actions={
+   326→          <Button onClick={openAddExpense} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+   327→            <Plus className="h-4 w-4" /> Add Expense
+   328→          </Button>
+   329→        }
+   330→      />
+   331→
+   332→      {/* Stat cards */}
+   333→      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+   334→        <StatCard
+   335→          title="Total Expenses"
+   336→          value={formatCurrency(stats.total)}
+   337→          subtitle={`${expenses.length} entries`}
+   338→          icon={<Wallet className="h-5 w-5" />}
+   339→          accent="green"
+   340→        />
+   341→        <StatCard
+   342→          title="Approved"
+   343→          value={formatCurrency(stats.approvedSum)}
+   344→          subtitle={`${stats.approvedCount} entries`}
+   345→          icon={<CheckCircle2 className="h-5 w-5" />}
+   346→          accent="blue"
+   347→        />
+   348→        <StatCard
+   349→          title="Pending"
+   350→          value={formatCurrency(stats.pendingSum)}
+   351→          subtitle={`${stats.pendingCount} awaiting review`}
+   352→          icon={<Clock className="h-5 w-5" />}
+   353→          accent="orange"
+   354→        />
+   355→        <StatCard
+   356→          title="Rejected"
+   357→          value={formatCurrency(stats.rejectedSum)}
+   358→          subtitle={`${stats.rejectedCount} entries`}
+   359→          icon={<XCircle className="h-5 w-5" />}
+   360→          accent="red"
+   361→        />
+   362→      </div>
+   363→
+   364→      {/* Charts row */}
+   365→      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+   366→        <Card className="lg:col-span-2 shadow-sm border-border/60">
+   367→          <CardHeader className="pb-2">
+   368→            <CardTitle className="text-base font-semibold">Budget vs Actual</CardTitle>
+   369→            <CardDescription className="text-xs">
+   370→              Project budget vs (actual cost + approved expenses) in S$
+   371→            </CardDescription>
+   372→          </CardHeader>
+   373→          <CardContent>
+   374→            {budgetChart.length === 0 ? (
+   375→              <div className="h-[260px] flex items-center justify-center text-sm text-muted-foreground">
+   376→                No projects yet.
+   377→              </div>
+   378→            ) : (
+   379→              <ResponsiveContainer width="100%" height={260}>
+   380→                <BarChart data={budgetChart} margin={{ top: 8, right: 8, left: 0, bottom: 30 }}>
+   381→                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+   382→                  <XAxis
+   383→                    dataKey="name"
+   384→                    tick={{ fontSize: 10, fill: '#64748b' }}
+   385→                    interval={0}
+   386→                    angle={-15}
+   387→                    textAnchor="end"
+   388→                    height={50}
+   389→                  />
+   390→                  <YAxis tick={{ fontSize: 11, fill: '#64748b' }} tickFormatter={(v) => formatCurrency(v)} />
+   391→                  <RTooltip
+   392→                    contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}
+   393→                    formatter={(v: any) => formatCurrency(v)}
+   394→                  />
+   395→                  <Legend iconType="circle" wrapperStyle={{ fontSize: 11 }} />
+   396→                  <Bar dataKey="budget" name="Budget" fill="#10b981" radius={[4, 4, 0, 0]} />
+   397→                  <Bar dataKey="actual" name="Actual + Expenses" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+   398→                </BarChart>
+   399→              </ResponsiveContainer>
+   400→            )}
+   401→          </CardContent>
+   402→        </Card>
+   403→
+   404→        <Card className="shadow-sm border-border/60">
+   405→          <CardHeader className="pb-2">
+   406→            <CardTitle className="text-base font-semibold">Expense by Category</CardTitle>
+   407→            <CardDescription className="text-xs">
+   408→              Total amount per category (excludes rejected)
+   409→            </CardDescription>
+   410→          </CardHeader>
+   411→          <CardContent>
+   412→            {categoryChart.length === 0 ? (
+   413→              <div className="h-[260px] flex items-center justify-center text-sm text-muted-foreground">
+   414→                No expenses yet.
+   415→              </div>
+   416→            ) : (
+   417→              <ResponsiveContainer width="100%" height={260}>
+   418→                <PieChart>
+   419→                  <Pie
+   420→                    data={categoryChart}
+   421→                    dataKey="value"
+   422→                    nameKey="name"
+   423→                    cx="50%"
+   424→                    cy="50%"
+   425→                    innerRadius={50}
+   426→                    outerRadius={85}
+   427→                    paddingAngle={2}
+   428→                  >
+   429→                    {categoryChart.map((_, i) => (
+   430→                      <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+   431→                    ))}
+   432→                  </Pie>
+   433→                  <RTooltip
+   434→                    contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}
+   435→                    formatter={(v: any) => formatCurrency(v)}
+   436→                  />
+   437→                  <Legend iconType="circle" wrapperStyle={{ fontSize: 10 }} />
+   438→                </PieChart>
+   439→              </ResponsiveContainer>
+   440→            )}
+   441→          </CardContent>
+   442→        </Card>
+   443→      </div>
+   444→
+   445→      {/* Project profitability */}
+   446→      <Card className="shadow-sm border-border/60">
+   447→        <CardHeader className="pb-3">
+   448→          <CardTitle className="text-base font-semibold flex items-center gap-2">
+   449→            <TrendingUp className="h-4 w-4 text-emerald-600" /> Project Profitability
+   450→          </CardTitle>
+   451→          <CardDescription className="text-xs">
+   452→            Budget, total spent and profit margin per project
+   453→          </CardDescription>
+   454→        </CardHeader>
+   455→        <CardContent>
+   456→          {profitability.length === 0 ? (
+   457→            <div className="py-6 text-center text-sm text-muted-foreground">No projects yet.</div>
+   458→          ) : (
+   459→            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+   460→              {profitability.map((p) => (
+   461→                <div
+   462→                  key={p.id}
+   463→                  className={cn(
+   464→                    'rounded-xl border p-4 transition-colors',
+   465→                    p.overBudget
+   466→                      ? 'border-red-200 bg-red-50/40'
+   467→                      : 'border-slate-200 bg-slate-50/40',
+   468→                  )}
+   469→                >
+   470→                  <div className="flex items-start justify-between gap-2 mb-3">
+   471→                    <h4 className="font-semibold text-slate-900 text-sm truncate">{p.name}</h4>
+   472→                    {p.overBudget ? (
+   473→                      <Badge className="bg-red-100 text-red-700 border-red-200 shrink-0">Over Budget</Badge>
+   474→                    ) : (
+   475→                      <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 shrink-0">On Track</Badge>
+   476→                    )}
+   477→                  </div>
+   478→                  <div className="space-y-2 text-xs">
+   479→                    <div className="flex items-center justify-between">
+   480→                      <span className="text-slate-600">Budget</span>
+   481→                      <span className="font-semibold text-slate-900 tabular-nums">{formatCurrency(p.budget)}</span>
+   482→                    </div>
+   483→                    <div className="flex items-center justify-between">
+   484→                      <span className="text-slate-600">Actual Cost</span>
+   485→                      <span className="font-medium text-slate-700 tabular-nums">{formatCurrency(p.actualCost)}</span>
+   486→                    </div>
+   487→                    <div className="flex items-center justify-between">
+   488→                      <span className="text-slate-600">Approved Expenses</span>
+   489→                      <span className="font-medium text-slate-700 tabular-nums">{formatCurrency(p.expensesApproved)}</span>
+   490→                    </div>
+   491→                    <div className="flex items-center justify-between border-t border-slate-200 pt-2 mt-1">
+   492→                      <span className="text-slate-700 font-medium">Total Spent</span>
+   493→                      <span className="font-semibold text-slate-900 tabular-nums">{formatCurrency(p.totalSpent)}</span>
+   494→                    </div>
+   495→                    <Progress value={p.usedPct} className="h-1.5" />
+   496→                    <div className="flex items-center justify-between">
+   497→                      <span className="text-slate-600">Used</span>
+   498→                      <span className={cn(
+   499→                        'font-medium tabular-nums',
+   500→                        p.usedPct > 100 ? 'text-red-600' : 'text-slate-700',
+   501→                      )}>
+   502→                        {p.usedPct}%
+   503→                      </span>
+   504→                    </div>
+   505→                    <div className="flex items-center justify-between border-t border-slate-200 pt-2 mt-1">
+   506→                      <span className={cn('flex items-center gap-1 font-medium', p.profit >= 0 ? 'text-emerald-700' : 'text-red-700')}>
+   507→                        {p.profit >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+   508→                        Profit
+   509→                      </span>
+   510→                      <span className={cn(
+   511→                        'font-bold tabular-nums',
+   512→                        p.profit >= 0 ? 'text-emerald-700' : 'text-red-700',
+   513→                      )}>
+   514→                        {formatCurrency(p.profit)}
+   515→                      </span>
+   516→                    </div>
+   517→                    <div className="flex items-center justify-between">
+   518→                      <span className="text-slate-600">Margin</span>
+   519→                      <span className={cn(
+   520→                        'font-semibold tabular-nums',
+   521→                        p.marginPct >= 0 ? 'text-emerald-700' : 'text-red-700',
+   522→                      )}>
+   523→                        {p.budget > 0 ? `${p.marginPct}%` : '—'}
+   524→                      </span>
+   525→                    </div>
+   526→                  </div>
+   527→                </div>
+   528→              ))}
+   529→            </div>
+   530→          )}
+   531→        </CardContent>
+   532→      </Card>
+   533→
+   534→      {/* Filter bar */}
+   535→      <Card className="shadow-sm border-border/60">
+   536→        <CardContent className="p-4">
+   537→          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+   538→            <div>
+   539→              <Label className="mb-1.5 text-xs text-muted-foreground uppercase tracking-wide">Project</Label>
+   540→              <Select value={projectFilter} onValueChange={setProjectFilter}>
+   541→                <SelectTrigger className="w-full">
+   542→                  <SelectValue placeholder="All projects" />
+   543→                </SelectTrigger>
+   544→                <SelectContent>
+   545→                  <SelectItem value="all">All Projects</SelectItem>
+   546→                  {projects.map((p) => (
+   547→                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+   548→                  ))}
+   549→                </SelectContent>
+   550→              </Select>
+   551→            </div>
+   552→            <div>
+   553→              <Label className="mb-1.5 text-xs text-muted-foreground uppercase tracking-wide">Category</Label>
+   554→              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+   555→                <SelectTrigger className="w-full">
+   556→                  <SelectValue placeholder="All categories" />
+   557→                </SelectTrigger>
+   558→                <SelectContent>
+   559→                  <SelectItem value="all">All Categories</SelectItem>
+   560→                  {EXPENSE_CATEGORIES.map((c) => (
+   561→                    <SelectItem key={c} value={c}>{c}</SelectItem>
+   562→                  ))}
+   563→                </SelectContent>
+   564→              </Select>
+   565→            </div>
+   566→            <div>
+   567→              <Label className="mb-1.5 text-xs text-muted-foreground uppercase tracking-wide">Approval Status</Label>
+   568→              <Select value={approvalFilter} onValueChange={setApprovalFilter}>
+   569→                <SelectTrigger className="w-full">
+   570→                  <SelectValue placeholder="All statuses" />
+   571→                </SelectTrigger>
+   572→                <SelectContent>
+   573→                  <SelectItem value="all">All Statuses</SelectItem>
+   574→                  <SelectItem value="Pending">Pending</SelectItem>
+   575→                  <SelectItem value="Approved">Approved</SelectItem>
+   576→                  <SelectItem value="Rejected">Rejected</SelectItem>
+   577→                </SelectContent>
+   578→              </Select>
+   579→            </div>
+   580→          </div>
+   581→        </CardContent>
+   582→      </Card>
+   583→
+   584→      {/* Expenses table */}
+   585→      <Card className="shadow-sm border-border/60">
+   586→        <CardHeader className="pb-3">
+   587→          <CardTitle className="text-base font-semibold flex items-center gap-2">
+   588→            <FileText className="h-4 w-4 text-emerald-600" /> Expense Records
+   589→          </CardTitle>
+   590→          <CardDescription className="text-xs">
+   591→            {filteredExpenses.length} of {expenses.length} entries · Approve or reject pending expenses
+   592→          </CardDescription>
+   593→        </CardHeader>
+   594→        <CardContent className="px-0 pb-0">
+   595→          <ScrollArea className="max-h-[560px] w-full">
+   596→            <Table>
+   597→              <TableHeader className="sticky top-0 bg-card z-10">
+   598→                <TableRow>
+   599→                  <TableHead>Date</TableHead>
+   600→                  <TableHead>Project</TableHead>
+   601→                  <TableHead>Category</TableHead>
+   602→                  <TableHead>Description</TableHead>
+   603→                  <TableHead className="text-right">Amount</TableHead>
+   604→                  <TableHead>Paid By</TableHead>
+   605→                  <TableHead>Approval</TableHead>
+   606→                  <TableHead className="text-right">Actions</TableHead>
+   607→                </TableRow>
+   608→              </TableHeader>
+   609→              <TableBody>
+   610→                {filteredExpenses.length === 0 ? (
+   611→                  <TableRow>
+   612→                    <TableCell colSpan={8} className="text-center text-muted-foreground py-10">
+   613→                      No expenses match the current filters.
+   614→                    </TableCell>
+   615→                  </TableRow>
+   616→                ) : (
+   617→                  filteredExpenses.map((e) => (
+   618→                    <TableRow key={e.id}>
+   619→                      <TableCell className="text-slate-700 whitespace-nowrap">{formatDate(e.date)}</TableCell>
+   620→                      <TableCell className="text-slate-700 text-sm">{e.project?.name || '—'}</TableCell>
+   621→                      <TableCell><ExpenseCategoryBadge category={e.category} /></TableCell>
+   622→                      <TableCell className="text-slate-700 text-sm max-w-xs truncate">
+   623→                        <div className="flex items-center gap-1.5">
+   624→                          {e.receiptUrl && <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
+   625→                          <span className="truncate">{e.description}</span>
+   626→                        </div>
+   627→                      </TableCell>
+   628→                      <TableCell className="text-right tabular-nums font-semibold text-slate-900">
+   629→                        {formatCurrency(Number(e.amount))}
+   630→                      </TableCell>
+   631→                      <TableCell className="text-muted-foreground text-xs">{e.paidBy || '—'}</TableCell>
+   632→                      <TableCell><StatusBadge status={e.approvalStatus} /></TableCell>
+   633→                      <TableCell>
+   634→                        <div className="flex items-center justify-end gap-1">
+   635→                          {e.approvalStatus === 'Pending' && (
+   636→                            <>
+   637→                              <Button
+   638→                                size="icon"
+   639→                                variant="ghost"
+   640→                                className="h-8 w-8 text-emerald-600 hover:bg-emerald-50"
+   641→                                onClick={() => setApproval(e.id, 'Approved')}
+   642→                                title="Approve"
+   643→                              >
+   644→                                <Check className="h-4 w-4" />
+   645→                              </Button>
+   646→                              <Button
+   647→                                size="icon"
+   648→                                variant="ghost"
+   649→                                className="h-8 w-8 text-red-600 hover:bg-red-50"
+   650→                                onClick={() => setApproval(e.id, 'Rejected')}
+   651→                                title="Reject"
+   652→                              >
+   653→                                <X className="h-4 w-4" />
+   654→                              </Button>
+   655→                            </>
+   656→                          )}
+   657→                          <Button
+   658→                            size="icon"
+   659→                            variant="ghost"
+   660→                            className="h-8 w-8 hover:bg-slate-100"
+   661→                            onClick={() => openEditExpense(e)}
+   662→                            title="Edit"
+   663→                          >
+   664→                            <Pencil className="h-4 w-4" />
+   665→                          </Button>
+   666→                          <Button
+   667→                            size="icon"
+   668→                            variant="ghost"
+   669→                            className="h-8 w-8 text-red-600 hover:bg-red-50"
+   670→                            onClick={() => setDeleteId(e.id)}
+   671→                            title="Delete"
+   672→                          >
+   673→                            <Trash2 className="h-4 w-4" />
+   674→                          </Button>
+   675→                        </div>
+   676→                      </TableCell>
+   677→                    </TableRow>
+   678→                  ))
+   679→                )}
+   680→              </TableBody>
+   681→            </Table>
+   682→          </ScrollArea>
+   683→        </CardContent>
+   684→      </Card>
+   685→
+   686→      {/* Add/Edit Expense Dialog */}
+   687→      <Dialog
+   688→        open={expenseDialog.open}
+   689→        onOpenChange={(o) => setExpenseDialog((s) => ({ ...s, open: o }))}
+   690→      >
+   691→        <DialogContent className="sm:max-w-lg">
+   692→          <DialogHeader>
+   693→            <DialogTitle>
+   694→              {expenseDialog.mode === 'add' ? 'Add New Expense' : 'Edit Expense'}
+   695→            </DialogTitle>
+   696→            <DialogDescription>
+   697→              {expenseDialog.mode === 'add'
+   698→                ? 'Record a new project expense with approval tracking.'
+   699→                : 'Update the expense details below.'}
+   700→            </DialogDescription>
+   701→          </DialogHeader>
+   702→          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   703→            <div>
+   704→              <Label htmlFor="e-date">Date</Label>
+   705→              <Input
+   706→                id="e-date"
+   707→                type="date"
+   708→                value={eForm.date}
+   709→                onChange={(e) => setEForm((s) => ({ ...s, date: e.target.value }))}
+   710→                className="mt-1.5"
+   711→              />
+   712→            </div>
+   713→            <div>
+   714→              <Label htmlFor="e-project">Project</Label>
+   715→              <Select
+   716→                value={eForm.projectId}
+   717→                onValueChange={(v) => setEForm((s) => ({ ...s, projectId: v }))}
+   718→              >
+   719→                <SelectTrigger className="w-full mt-1.5">
+   720→                  <SelectValue placeholder="No project" />
+   721→                </SelectTrigger>
+   722→                <SelectContent>
+   723→                  <SelectItem value="none">No Project</SelectItem>
+   724→                  {projects.map((p) => (
+   725→                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+   726→                  ))}
+   727→                </SelectContent>
+   728→              </Select>
+   729→            </div>
+   730→            <div>
+   731→              <Label htmlFor="e-category">Category</Label>
+   732→              <Select
+   733→                value={eForm.category}
+   734→                onValueChange={(v) => setEForm((s) => ({ ...s, category: v }))}
+   735→              >
+   736→                <SelectTrigger className="w-full mt-1.5">
+   737→                  <SelectValue />
+   738→                </SelectTrigger>
+   739→                <SelectContent>
+   740→                  {EXPENSE_CATEGORIES.map((c) => (
+   741→                    <SelectItem key={c} value={c}>{c}</SelectItem>
+   742→                  ))}
+   743→                </SelectContent>
+   744→              </Select>
+   745→            </div>
+   746→            <div>
+   747→              <Label htmlFor="e-amount">Amount (S$) *</Label>
+   748→              <Input
+   749→                id="e-amount"
+   750→                type="number"
+   751→                min={0}
+   752→                step={0.01}
+   753→                value={eForm.amount || ''}
+   754→                onChange={(e) => setEForm((s) => ({ ...s, amount: Number(e.target.value) }))}
+   755→                className="mt-1.5"
+   756→              />
+   757→            </div>
+   758→            <div className="sm:col-span-2">
+   759→              <Label htmlFor="e-description">Description *</Label>
+   760→              <Input
+   761→                id="e-description"
+   762→                value={eForm.description}
+   763→                onChange={(e) => setEForm((s) => ({ ...s, description: e.target.value }))}
+   764→                placeholder="e.g. Pickup truck rental for site visit"
+   765→                className="mt-1.5"
+   766→              />
+   767→            </div>
+   768→            <div>
+   769→              <Label htmlFor="e-paid-by">Paid By</Label>
+   770→              <Input
+   771→                id="e-paid-by"
+   772→                value={eForm.paidBy}
+   773→                onChange={(e) => setEForm((s) => ({ ...s, paidBy: e.target.value }))}
+   774→                placeholder="Name of payee"
+   775→                className="mt-1.5"
+   776→              />
+   777→            </div>
+   778→            <div>
+   779→              <Label htmlFor="e-status">Approval Status</Label>
+   780→              <Select
+   781→                value={eForm.approvalStatus}
+   782→                onValueChange={(v) => setEForm((s) => ({ ...s, approvalStatus: v as any }))}
+   783→              >
+   784→                <SelectTrigger className="w-full mt-1.5">
+   785→                  <SelectValue />
+   786→                </SelectTrigger>
+   787→                <SelectContent>
+   788→                  <SelectItem value="Pending">Pending</SelectItem>
+   789→                  <SelectItem value="Approved">Approved</SelectItem>
+   790→                  <SelectItem value="Rejected">Rejected</SelectItem>
+   791→                </SelectContent>
+   792→              </Select>
+   793→            </div>
+   794→            <div className="sm:col-span-2">
+   795→              <Label htmlFor="e-receipt">Receipt URL</Label>
+   796→              <div className="flex gap-2 mt-1.5">
+   797→                <Input
+   798→                  id="e-receipt"
+   799→                  value={eForm.receiptUrl}
+   800→                  onChange={(e) => setEForm((s) => ({ ...s, receiptUrl: e.target.value }))}
+   801→                  placeholder="Filename or URL of receipt"
+   802→                  className="flex-1"
+   803→                />
+   804→                <Button
+   805→                  type="button"
+   806→                  variant="outline"
+   807→                  onClick={() => document.getElementById('e-receipt-file')?.click()}
+   808→                  className="shrink-0"
+   809→                >
+   810→                  <Upload className="h-4 w-4" /> Upload
+   811→                </Button>
+   812→                <input
+   813→                  id="e-receipt-file"
+   814→                  type="file"
+   815→                  accept="image/*,.pdf"
+   816→                  className="hidden"
+   817→                  onChange={onReceiptUpload}
+   818→                />
+   819→              </div>
+   820→              {eForm.receiptUrl && (
+   821→                <p className="mt-1 text-xs text-emerald-700 flex items-center gap-1">
+   822→                  <FileText className="h-3 w-3" /> Attached: {eForm.receiptUrl}
+   823→                </p>
+   824→              )}
+   825→            </div>
+   826→          </div>
+   827→          <DialogFooter>
+   828→            <Button variant="outline" onClick={() => setExpenseDialog({ open: false, mode: 'add' })}>
+   829→              Cancel
+   830→            </Button>
+   831→            <Button
+   832→              onClick={submitExpense}
+   833→              disabled={saving}
+   834→              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+   835→            >
+   836→              {saving ? 'Saving…' : expenseDialog.mode === 'add' ? 'Add Expense' : 'Save Changes'}
+   837→            </Button>
+   838→          </DialogFooter>
+   839→        </DialogContent>
+   840→      </Dialog>
+   841→
+   842→      {/* Delete confirmation */}
+   843→      <AlertDialog open={!!deleteId} onOpenChange={(o) => !o && setDeleteId(null)}>
+   844→        <AlertDialogContent>
+   845→          <AlertDialogHeader>
+   846→            <AlertDialogTitle>Delete Expense?</AlertDialogTitle>
+   847→            <AlertDialogDescription>
+   848→              This will permanently delete the expense record. This action cannot be undone.
+   849→            </AlertDialogDescription>
+   850→          </AlertDialogHeader>
+   851→          <AlertDialogFooter>
+   852→            <AlertDialogCancel>Cancel</AlertDialogCancel>
+   853→            <AlertDialogAction
+   854→              onClick={confirmDelete}
+   855→              className="bg-red-600 hover:bg-red-700 text-white"
+   856→            >
+   857→              Delete
+   858→            </AlertDialogAction>
+   859→          </AlertDialogFooter>
+   860→        </AlertDialogContent>
+   861→      </AlertDialog>
+   862→    </div>
+   863→  )
+   864→}
+   865→

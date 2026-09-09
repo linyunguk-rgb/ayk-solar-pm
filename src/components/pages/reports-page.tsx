@@ -1,6 +1,7 @@
 'use client'
 import { useState, useCallback } from 'react'
-import { PageHeader } from '@/components/shared/page-header'
+import { SectionHeader, SubSection } from '@/components/shared/section-header'
+import { EmptyState } from '@/components/shared/empty-state'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -10,9 +11,12 @@ import { toast } from 'sonner'
 import {
   FileBarChart, FileText, Calendar, CalendarDays, CalendarRange, Users,
   Package, DollarSign, ShieldAlert, FolderKanban, TrendingUp,
-  Printer, Download, Loader2, History,
+  Printer, Download, Loader2, History, RotateCw,
 } from 'lucide-react'
 import { APP_NAME } from '@/lib/constants'
+import type { SectionKey } from '@/lib/design-system'
+import { getSectionTheme } from '@/lib/design-system'
+import { cn } from '@/lib/utils'
 
 type ReportType =
   | 'daily' | 'weekly' | 'monthly' | 'manpower' | 'material'
@@ -23,74 +27,93 @@ interface ReportCardConfig {
   title: string
   description: string
   icon: React.ReactNode
-  accent: string
+  section: SectionKey
 }
 
+// Color-coded report cards per spec — each card uses the section color matching its content type.
 const REPORT_CARDS: ReportCardConfig[] = [
   {
     type: 'daily',
     title: 'Daily Progress Report',
-    description: 'Today\'s site progress entries across all active projects.',
+    description: "Today's site progress entries across all active projects.",
     icon: <Calendar className="h-6 w-6" />,
-    accent: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400',
+    section: 'overview',
   },
   {
     type: 'weekly',
     title: 'Weekly Progress Report',
     description: 'Last 7 days of installations, manpower, and site status.',
     icon: <CalendarDays className="h-6 w-6" />,
-    accent: 'bg-sky-50 text-sky-600 dark:bg-sky-950 dark:text-sky-400',
+    section: 'overview',
   },
   {
     type: 'monthly',
     title: 'Monthly Progress Report',
     description: '30-day rollup with totals, man-hours, and status.',
     icon: <CalendarRange className="h-6 w-6" />,
-    accent: 'bg-violet-50 text-violet-600 dark:bg-violet-950 dark:text-violet-400',
+    section: 'overview',
   },
   {
     type: 'manpower',
     title: 'Manpower Report',
     description: 'Workforce roster, teams, roles, skill levels, and status.',
     icon: <Users className="h-6 w-6" />,
-    accent: 'bg-blue-50 text-blue-600 dark:bg-blue-950 dark:text-blue-400',
+    section: 'manpower',
   },
   {
     type: 'material',
     title: 'Material Usage Report',
     description: 'Stock levels, valuations, and low-stock flags by category.',
     icon: <Package className="h-6 w-6" />,
-    accent: 'bg-amber-50 text-amber-600 dark:bg-amber-950 dark:text-amber-400',
+    section: 'materials',
   },
   {
     type: 'expense',
     title: 'Expense Report',
     description: 'All recorded expenses with approval status and totals.',
     icon: <DollarSign className="h-6 w-6" />,
-    accent: 'bg-orange-50 text-orange-600 dark:bg-orange-950 dark:text-orange-400',
+    section: 'expenses',
   },
   {
     type: 'safety',
     title: 'Safety Report',
     description: 'Incidents, near misses, and PPE compliance summary.',
     icon: <ShieldAlert className="h-6 w-6" />,
-    accent: 'bg-red-50 text-red-600 dark:bg-red-950 dark:text-red-400',
+    section: 'safety',
   },
   {
     type: 'project-summary',
     title: 'Project Summary',
     description: 'All projects with progress, panels, budget, and status.',
     icon: <FolderKanban className="h-6 w-6" />,
-    accent: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400',
+    section: 'projects',
   },
   {
     type: 'planned-vs-actual',
     title: 'Planned vs Actual Report',
     description: 'Schedule variance and budget burn per project.',
     icon: <TrendingUp className="h-6 w-6" />,
-    accent: 'bg-sky-50 text-sky-600 dark:bg-sky-950 dark:text-sky-400',
+    section: 'progress',
   },
 ]
+
+// Section-keyed button color — used for the "Generate" button on each card.
+const SECTION_BUTTON: Record<SectionKey, string> = {
+  overview: 'bg-emerald-600 hover:bg-emerald-700 text-white',
+  projects: 'bg-sky-600 hover:bg-sky-700 text-white',
+  progress: 'bg-indigo-600 hover:bg-indigo-700 text-white',
+  tasks: 'bg-amber-600 hover:bg-amber-700 text-white',
+  manpower: 'bg-cyan-600 hover:bg-cyan-700 text-white',
+  materials: 'bg-violet-600 hover:bg-violet-700 text-white',
+  expenses: 'bg-pink-600 hover:bg-pink-700 text-white',
+  safety: 'bg-red-600 hover:bg-red-700 text-white',
+  documents: 'bg-teal-600 hover:bg-teal-700 text-white',
+  reports: 'bg-slate-600 hover:bg-slate-700 text-white',
+  settings: 'bg-stone-600 hover:bg-stone-700 text-white',
+  guide: 'bg-emerald-600 hover:bg-emerald-700 text-white',
+  mobile: 'bg-emerald-600 hover:bg-emerald-700 text-white',
+  dailyEntry: 'bg-amber-600 hover:bg-amber-700 text-white',
+}
 
 interface ReportResponse {
   type: string
@@ -159,6 +182,13 @@ function downloadHtml(html: string, type: ReportType, title: string) {
   toast.success('Report downloaded')
 }
 
+function formatGeneratedAt(iso: string): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
+  return d.toLocaleString('en-SG', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+}
+
 export function ReportsPage() {
   const [loadingType, setLoadingType] = useState<ReportType | null>(null)
   const [activeReport, setActiveReport] = useState<ReportResponse | null>(null)
@@ -189,132 +219,165 @@ export function ReportsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
+      <SectionHeader
+        section="reports"
         title="Reports"
         description="Generate professional project reports"
-        icon={<FileBarChart className="h-5 w-5" />}
+        icon={<FileBarChart className="h-6 w-6" />}
       />
 
       {/* Report cards grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {REPORT_CARDS.map((r) => (
-          <Card key={r.type} className="overflow-hidden border-border/60 shadow-sm hover:shadow-md transition-shadow">
-            <CardContent className="p-5 flex flex-col gap-3 h-full">
-              <div className="flex items-start gap-3">
-                <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${r.accent}`}>
-                  {r.icon}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <h3 className="font-semibold text-foreground leading-tight">{r.title}</h3>
-                  <p className="mt-1 text-xs text-muted-foreground leading-relaxed">{r.description}</p>
-                </div>
-              </div>
-              <div className="mt-auto flex items-center gap-2 pt-2">
-                <Button
-                  onClick={() => handleGenerate(r.type)}
-                  disabled={loadingType === r.type}
-                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
-                >
-                  {loadingType === r.type ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Generating…
-                    </>
-                  ) : (
-                    <>
-                      <FileText className="h-4 w-4 mr-2" /> Generate
-                    </>
-                  )}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => handleGenerate(r.type)}
-                  disabled={loadingType === r.type}
-                  aria-label={`Print ${r.title}`}
-                  title="Print"
-                >
-                  <Printer className="h-4 w-4" />
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+      <div>
+        <SubSection
+          section="reports"
+          title="Available Reports"
+          description="Click Generate to preview a report, then print or download it"
+          icon={<FileText className="h-4 w-4" />}
+        />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {REPORT_CARDS.map((r) => {
+            const theme = getSectionTheme(r.section)
+            const isLoading = loadingType === r.type
+            return (
+              <Card
+                key={r.type}
+                className="overflow-hidden border-border/60 shadow-sm hover:shadow-md transition-all hover:-translate-y-0.5 flex flex-col"
+              >
+                {/* Color-coded top accent strip */}
+                <div className={cn('h-1.5 w-full bg-gradient-to-r', theme.gradient)} />
+                <CardContent className="p-5 flex flex-col gap-3 h-full">
+                  <div className="flex items-start gap-3">
+                    <div className={cn('flex h-12 w-12 shrink-0 items-center justify-center rounded-xl', theme.iconBg, theme.iconFg)}>
+                      {r.icon}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="font-semibold text-foreground leading-tight">{r.title}</h3>
+                      <p className="mt-1 text-xs text-muted-foreground leading-relaxed">{r.description}</p>
+                    </div>
+                  </div>
+                  <div className="mt-auto flex items-center gap-2 pt-2">
+                    <Button
+                      onClick={() => handleGenerate(r.type)}
+                      disabled={isLoading}
+                      className={cn('flex-1 gap-2', SECTION_BUTTON[r.section])}
+                    >
+                      {isLoading ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" /> Generating…
+                        </>
+                      ) : (
+                        <>
+                          <FileText className="h-4 w-4" /> Generate
+                        </>
+                      )}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => handleGenerate(r.type)}
+                      disabled={isLoading}
+                      aria-label={`Print ${r.title}`}
+                      title="Print"
+                    >
+                      <Printer className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })}
+        </div>
       </div>
 
       {/* Recent reports */}
-      <Card className="border-border/60 shadow-sm">
-        <CardContent className="p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <History className="h-4 w-4 text-emerald-600" />
-            <h3 className="text-base font-semibold text-foreground">Recent Reports</h3>
-          </div>
-          {recent.length === 0 ? (
-            <div className="text-sm text-muted-foreground py-6 text-center">
-              No reports generated in this session yet. Click <span className="font-medium text-emerald-600">Generate</span> on any report above.
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {recent.map((r) => {
-                const cfg = REPORT_CARDS.find((c) => c.type === r.type)
-                return (
-                  <button
-                    key={r.type + r.generatedAt}
-                    onClick={() => handleGenerate(r.type)}
-                    className="flex items-center gap-3 rounded-lg border border-border/60 bg-white hover:border-emerald-300 hover:bg-emerald-50/40 dark:bg-transparent transition-colors px-3 py-2.5 text-left"
-                  >
-                    <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${cfg?.accent || 'bg-slate-100 text-slate-600'}`}>
-                      {cfg?.icon}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm font-medium text-foreground truncate">{r.title}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {new Date(r.generatedAt).toLocaleString('en-SG', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+      <div>
+        <SubSection
+          section="reports"
+          title="Recent Reports"
+          description="Reports generated in this session — click to re-generate"
+          icon={<History className="h-4 w-4" />}
+        />
+        <Card className="border-border/60 shadow-sm">
+          <CardContent className="p-5">
+            {recent.length === 0 ? (
+              <EmptyState
+                icon={<History className="h-6 w-6" />}
+                title="No reports generated yet"
+                description="Click Generate on any report above to start. Generated reports will appear here for quick re-runs."
+              />
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {recent.map((r) => {
+                  const cfg = REPORT_CARDS.find((c) => c.type === r.type)
+                  const theme = cfg ? getSectionTheme(cfg.section) : getSectionTheme('reports')
+                  return (
+                    <button
+                      key={r.type + r.generatedAt}
+                      onClick={() => handleGenerate(r.type)}
+                      className={cn(
+                        'flex items-center gap-3 rounded-lg border bg-white hover:bg-slate-50 transition-colors px-3 py-2.5 text-left',
+                        theme.border,
+                      )}
+                    >
+                      <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', theme.iconBg, theme.iconFg)}>
+                        {cfg?.icon}
                       </div>
-                    </div>
-                    <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 hidden sm:inline-flex">View</Badge>
-                  </button>
-                )
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-medium text-foreground truncate">{r.title}</div>
+                        <div className="text-[11px] text-muted-foreground">
+                          {formatGeneratedAt(r.generatedAt)}
+                        </div>
+                      </div>
+                      <Badge
+                        variant="outline"
+                        className={cn('shrink-0 hidden sm:inline-flex items-center gap-1', theme.bg, theme.fg, theme.border)}
+                      >
+                        <RotateCw className="h-3 w-3" /> Re-run
+                      </Badge>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Report preview dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-4xl w-[96vw] sm:w-[96vw] max-h-[88vh] flex flex-col gap-0 p-0 overflow-hidden">
+        <DialogContent className="max-w-4xl w-[96vw] sm:w-[96vw] max-h-[85vh] flex flex-col gap-0 p-0 overflow-hidden">
           <DialogHeader className="px-6 pt-6 pb-3 border-b border-border/60 shrink-0">
             <DialogTitle className="flex items-center gap-2 text-base">
-              <FileBarChart className="h-4 w-4 text-emerald-600" />
+              <FileBarChart className="h-4 w-4 text-slate-600" />
               {activeReport?.title || 'Report'}
             </DialogTitle>
             <DialogDescription className="text-xs">
-              Generated {activeReport ? new Date(activeReport.generatedAt).toLocaleString('en-SG') : ''}
+              Generated {activeReport ? formatGeneratedAt(activeReport.generatedAt) : ''}
             </DialogDescription>
           </DialogHeader>
           <div className="flex-1 min-h-0 overflow-hidden">
-            <ScrollArea className="h-full max-h-[62vh] ayk-scrollbar">
+            <ScrollArea className="h-full max-h-[60vh] ayk-scrollbar">
               <div
                 className="px-6 py-4 text-slate-900 [&_table]:w-full [&_table]:border-collapse [&_th]:px-2 [&_th]:py-1.5 [&_th]:text-left [&_th]:border [&_th]:border-slate-200 [&_th]:text-[11px] [&_th]:font-semibold [&_th]:bg-slate-50 [&_td]:px-2 [&_td]:py-1.5 [&_td]:border [&_td]:border-slate-200 [&_td]:text-[11px]"
                 dangerouslySetInnerHTML={{ __html: activeReport?.html || '<p>No data</p>' }}
               />
             </ScrollArea>
           </div>
-          <DialogFooter className="px-6 py-4 border-t border-border/60 shrink-0 gap-2">
+          <DialogFooter className="px-6 py-4 border-t border-border/60 shrink-0 gap-2 flex-col sm:flex-row">
             <Button
               variant="outline"
               onClick={() => activeReport && downloadHtml(activeReport.html, activeReport.type as ReportType, activeReport.title)}
-              className="gap-2"
+              className="gap-2 w-full sm:w-auto"
             >
               <Download className="h-4 w-4" /> Download HTML
             </Button>
             <Button
               onClick={() => activeReport && printReport(activeReport.html, activeReport.title)}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+              className="bg-slate-600 hover:bg-slate-700 text-white gap-2 w-full sm:w-auto"
             >
               <Printer className="h-4 w-4" /> Print
             </Button>
-            <Button variant="ghost" onClick={() => setDialogOpen(false)}>Close</Button>
+            <Button variant="ghost" onClick={() => setDialogOpen(false)} className="w-full sm:w-auto">Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

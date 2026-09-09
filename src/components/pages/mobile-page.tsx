@@ -2,6 +2,8 @@
 import { useMemo } from 'react'
 import { useAppStore } from '@/store/app-store'
 import { useFetch } from '@/hooks/use-fetch'
+import { SectionHeader } from '@/components/shared/section-header'
+import { EmptyState, CardSkeleton } from '@/components/shared/empty-state'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -11,6 +13,7 @@ import {
   Sun, MapPin, Camera, CheckCircle2, Clock, AlertTriangle,
   ChevronRight, Home as HomeIcon, FolderKanban, ListChecks, MoreHorizontal,
   Users, Package, ShieldAlert, ListTodo, Wifi, BatteryFull, SignalHigh,
+  Smartphone,
 } from 'lucide-react'
 import {
   APP_NAME, APP_TAGLINE, formatDate, formatNumber, SITE_STATUSES,
@@ -97,11 +100,11 @@ export function MobilePage() {
   // Active project for current project card
   const { data: projData, loading: projLoading } = useFetch<{ projects: Project[] }>('/api/projects?status=Active')
   // Latest progress entry
-  const { data: progData } = useFetch<{ entries: ProgressEntry[] }>('/api/progress?limit=1')
+  const { data: progData, loading: progLoading } = useFetch<{ entries: ProgressEntry[] }>('/api/progress?limit=1')
   // Dashboard stats for quick stats row
   const { data: dashData } = useFetch<DashboardStats>('/api/dashboard')
   // Notifications
-  const { data: notifData } = useFetch<{ notifications: NotificationItem[] }>('/api/notifications')
+  const { data: notifData, loading: notifLoading } = useFetch<{ notifications: NotificationItem[] }>('/api/notifications')
   // Today's PPE checklists
   const todayISO = new Date().toISOString().slice(0, 10)
   const { data: checkData } = useFetch<{ checklists: Checklist[] }>('/api/safety/checklists?checklistType=PPE')
@@ -132,7 +135,7 @@ export function MobilePage() {
 
   // Circular progress ring values
   const overallPct = project?.overallProgress ?? 0
-  const installPct = project && project.totalPanels > 0
+  const installPct = project && (project.totalPanels ?? 0) > 0
     ? Math.min(100, Math.round((project.installedPanels / project.totalPanels) * 1000) / 10)
     : 0
   const ringStroke = 8
@@ -141,7 +144,17 @@ export function MobilePage() {
   const ringOffset = ringCircumference - (overallPct / 100) * ringCircumference
 
   return (
-    <div className="min-h-full bg-gradient-to-b from-slate-100 via-slate-50 to-emerald-50/40 dark:from-slate-900 dark:via-slate-950 dark:to-slate-950 -m-4 sm:-m-6 px-4 sm:px-6 py-6 flex justify-center items-start">
+    <div className="min-h-full bg-gradient-to-b from-slate-100 via-slate-50 to-emerald-50/40 dark:from-slate-900 dark:via-slate-950 dark:to-slate-950 -m-4 sm:-m-6 px-4 sm:px-6 py-6 flex flex-col items-center">
+      {/* Desktop-only page header (the phone frame has its own header on mobile) */}
+      <div className="hidden lg:block w-full max-w-md mb-4">
+        <SectionHeader
+          section="mobile"
+          title="Mobile Site View"
+          description="Phone interface for site supervisors"
+          icon={<Smartphone className="h-6 w-6" />}
+        />
+      </div>
+
       <div className="w-full max-w-md">
         {/* Phone frame — hidden on small screens (full width) */}
         <div className="mx-auto sm:rounded-[2rem] sm:border-4 sm:border-slate-800 dark:sm:border-slate-700 sm:shadow-2xl sm:overflow-hidden bg-white dark:bg-slate-950 min-h-[640px] flex flex-col">
@@ -156,7 +169,7 @@ export function MobilePage() {
           </div>
 
           {/* App header */}
-          <div className="bg-emerald-600 text-white px-5 py-5">
+          <div className="bg-gradient-to-br from-emerald-500 to-teal-600 text-white px-5 py-5 shadow-sm">
             <div className="flex items-center gap-3">
               <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/15 backdrop-blur">
                 <Sun className="h-6 w-6" />
@@ -176,14 +189,14 @@ export function MobilePage() {
           <ScrollArea className="flex-1 min-h-0 ayk-scrollbar bg-slate-50 dark:bg-slate-950">
             <div className="px-4 py-4 space-y-4">
               {/* Current Project */}
-              <div>
+              <section>
                 <div className="flex items-center justify-between mb-2">
                   <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
                     <FolderKanban className="h-4 w-4 text-emerald-600" /> Current Project
                   </h2>
                   <button
                     onClick={() => setNav('projects')}
-                    className="text-xs text-emerald-600 font-medium flex items-center gap-0.5"
+                    className="text-xs text-emerald-600 font-medium flex items-center gap-0.5 hover:text-emerald-700"
                   >
                     All <ChevronRight className="h-3 w-3" />
                   </button>
@@ -191,7 +204,7 @@ export function MobilePage() {
                 <Card className="border-emerald-200/60 shadow-sm overflow-hidden">
                   <CardContent className="p-4">
                     {projLoading && !project ? (
-                      <div className="h-32 animate-pulse bg-slate-100 rounded-lg" />
+                      <CardSkeleton className="h-32 rounded-lg" />
                     ) : project ? (
                       <div className="flex items-center gap-4">
                         {/* Progress ring */}
@@ -240,22 +253,27 @@ export function MobilePage() {
                         </div>
                       </div>
                     ) : (
-                      <div className="text-sm text-muted-foreground text-center py-6">
-                        No active projects assigned
-                      </div>
+                      <EmptyState
+                        icon={<FolderKanban className="h-6 w-6" />}
+                        title="No active projects assigned"
+                        description="Projects you supervise will appear here."
+                        className="py-6"
+                      />
                     )}
                   </CardContent>
                 </Card>
-              </div>
+              </section>
 
               {/* Today's Site Progress */}
-              <div>
+              <section>
                 <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-2 flex items-center gap-1.5">
-                  <Clock className="h-4 w-4 text-emerald-600" /> Today's Site Progress
+                  <Clock className="h-4 w-4 text-emerald-600" /> Today&apos;s Site Progress
                 </h2>
                 <Card className="border-border/60 shadow-sm">
                   <CardContent className="p-4">
-                    {isToday && latestEntry ? (
+                    {progLoading && !latestEntry ? (
+                      <CardSkeleton className="h-32 rounded-lg" />
+                    ) : isToday && latestEntry ? (
                       <>
                         <div className="flex items-center justify-between mb-3">
                           <div className="text-xs text-muted-foreground">Latest entry · {formatDate(latestEntry.date)}</div>
@@ -264,57 +282,56 @@ export function MobilePage() {
                           </Badge>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
-                          <MiniStat label="Installed today" value={formatNumber(latestEntry.installedPanels)} accent="text-emerald-600" icon={<Sun className="h-3.5 w-3.5" />} />
-                          <MiniStat label="Total installed" value={formatNumber(latestEntry.totalInstalled)} accent="text-sky-600" icon={<Package className="h-3.5 w-3.5" />} />
-                          <MiniStat label="Man-hours" value={latestEntry.manHours.toFixed(1)} accent="text-violet-600" icon={<Clock className="h-3.5 w-3.5" />} />
-                          <MiniStat label="Workers" value={formatNumber(latestEntry.workers)} accent="text-amber-600" icon={<Users className="h-3.5 w-3.5" />} />
+                          <MiniStat label="Installed today" value={formatNumber(latestEntry.installedPanels ?? 0)} accent="text-emerald-600" icon={<Sun className="h-3.5 w-3.5" />} />
+                          <MiniStat label="Total installed" value={formatNumber(latestEntry.totalInstalled ?? 0)} accent="text-sky-600" icon={<Package className="h-3.5 w-3.5" />} />
+                          <MiniStat label="Man-hours" value={(latestEntry.manHours ?? 0).toFixed(1)} accent="text-violet-600" icon={<Clock className="h-3.5 w-3.5" />} />
+                          <MiniStat label="Workers" value={formatNumber(latestEntry.workers ?? 0)} accent="text-amber-600" icon={<Users className="h-3.5 w-3.5" />} />
                         </div>
                       </>
                     ) : (
-                      <div className="flex flex-col items-center text-center py-4 gap-3">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-50 text-amber-600">
-                          <AlertTriangle className="h-6 w-6" />
-                        </div>
-                        <div>
-                          <div className="text-sm font-medium text-slate-900 dark:text-white">No entry submitted yet</div>
-                          <div className="text-xs text-muted-foreground mt-0.5">Tap below to log today's site progress</div>
-                        </div>
-                        <Button
-                          onClick={() => setNav('daily-entry')}
-                          className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 w-full"
-                          size="sm"
-                        >
-                          <Sun className="h-4 w-4" /> Update Progress
-                        </Button>
-                      </div>
+                      <EmptyState
+                        icon={<AlertTriangle className="h-6 w-6" />}
+                        title="No entry submitted yet"
+                        description="Tap below to log today's site progress"
+                        action={
+                          <Button
+                            onClick={() => setNav('daily-entry')}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 w-full"
+                            size="sm"
+                          >
+                            <Sun className="h-4 w-4" /> Update Progress
+                          </Button>
+                        }
+                        className="py-4"
+                      />
                     )}
                   </CardContent>
                 </Card>
-              </div>
+              </section>
 
               {/* Quick Stats row */}
-              <div>
+              <section>
                 <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-2">Quick Stats</h2>
                 <div className="grid grid-cols-2 gap-2">
                   <QuickStatCard
                     title="Workers on site"
-                    value={stats?.workersOnSite ?? 0}
-                    subtitle={`of ${stats?.totalWorkers ?? 0} total`}
+                    value={formatNumber(stats?.workersOnSite ?? 0)}
+                    subtitle={`of ${formatNumber(stats?.totalWorkers ?? 0)} total`}
                     icon={<Users className="h-4 w-4" />}
                     accent="bg-emerald-50 text-emerald-600"
                     onClick={() => setNav('manpower')}
                   />
                   <QuickStatCard
                     title="Pending tasks"
-                    value={stats?.pendingTasks ?? 0}
-                    subtitle={`${stats?.overdueTasks ?? 0} overdue`}
+                    value={formatNumber(stats?.pendingTasks ?? 0)}
+                    subtitle={`${formatNumber(stats?.overdueTasks ?? 0)} overdue`}
                     icon={<ListTodo className="h-4 w-4" />}
                     accent="bg-amber-50 text-amber-600"
                     onClick={() => setNav('tasks')}
                   />
                   <QuickStatCard
                     title="Material alerts"
-                    value={stats?.lowStockCount ?? 0}
+                    value={formatNumber(stats?.lowStockCount ?? 0)}
                     subtitle="Low stock items"
                     icon={<Package className="h-4 w-4" />}
                     accent="bg-red-50 text-red-600"
@@ -329,7 +346,7 @@ export function MobilePage() {
                     onClick={() => setNav('safety')}
                   />
                 </div>
-              </div>
+              </section>
 
               {/* Big Update Progress button */}
               <Button
@@ -339,11 +356,12 @@ export function MobilePage() {
                 <Sun className="h-5 w-5" /> Update Site Progress
               </Button>
 
-              {/* Safety checklist + Upload photos */}
+              {/* PPE Checklist + Upload photos */}
               <div className="grid grid-cols-2 gap-2">
                 <button
                   onClick={() => setNav('safety')}
-                  className="text-left rounded-xl border border-border/60 bg-white dark:bg-slate-900 p-3 hover:shadow-md transition-shadow"
+                  className="text-left rounded-xl border border-border/60 bg-white dark:bg-slate-900 p-3 hover:shadow-md hover:border-red-300 transition-all"
+                  aria-label="Open PPE checklist"
                 >
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-50 text-red-600">
@@ -363,7 +381,8 @@ export function MobilePage() {
 
                 <button
                   onClick={() => setNav('daily-entry')}
-                  className="text-left rounded-xl border border-border/60 bg-white dark:bg-slate-900 p-3 hover:shadow-md transition-shadow"
+                  className="text-left rounded-xl border border-border/60 bg-white dark:bg-slate-900 p-3 hover:shadow-md hover:border-sky-300 transition-all"
+                  aria-label="Upload site photos"
                 >
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-50 text-sky-600">
@@ -377,7 +396,7 @@ export function MobilePage() {
               </div>
 
               {/* Site Status pills */}
-              <div>
+              <section>
                 <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-2">Site Status</h2>
                 <div className="grid grid-cols-4 gap-2">
                   {SITE_STATUSES.map((s) => {
@@ -398,22 +417,33 @@ export function MobilePage() {
                     )
                   })}
                 </div>
-              </div>
+              </section>
 
               {/* Recent activity */}
-              <div>
+              <section>
                 <div className="flex items-center justify-between mb-2">
                   <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
                     <Clock className="h-4 w-4 text-emerald-600" /> Recent Activity
                   </h2>
-                  <button onClick={() => setNav('dashboard')} className="text-xs text-emerald-600 font-medium">
+                  <button onClick={() => setNav('dashboard')} className="text-xs text-emerald-600 font-medium hover:text-emerald-700">
                     View all
                   </button>
                 </div>
                 <Card className="border-border/60 shadow-sm">
                   <CardContent className="p-0">
-                    {notifications.length === 0 ? (
-                      <div className="py-6 text-center text-xs text-muted-foreground">No recent notifications</div>
+                    {notifLoading && notifications.length === 0 ? (
+                      <div className="p-3 space-y-2">
+                        {Array.from({ length: 3 }).map((_, i) => (
+                          <CardSkeleton key={i} className="h-10 rounded-md" />
+                        ))}
+                      </div>
+                    ) : notifications.length === 0 ? (
+                      <EmptyState
+                        icon={<Clock className="h-6 w-6" />}
+                        title="No recent notifications"
+                        description="You're all caught up!"
+                        className="py-6"
+                      />
                     ) : (
                       <ul className="divide-y divide-border/60">
                         {notifications.map((n) => (
@@ -439,23 +469,23 @@ export function MobilePage() {
                     )}
                   </CardContent>
                 </Card>
-              </div>
+              </section>
 
               <div className="h-2" />
             </div>
           </ScrollArea>
 
           {/* Bottom nav */}
-          <div className="border-t border-border/60 bg-white dark:bg-slate-900 px-2 py-2 grid grid-cols-4 gap-1 shrink-0">
+          <nav className="border-t border-border/60 bg-white dark:bg-slate-900 px-2 py-2 grid grid-cols-4 gap-1 shrink-0">
             <BottomNav icon={<HomeIcon className="h-5 w-5" />} label="Home" onClick={() => setNav('dashboard')} />
             <BottomNav icon={<FolderKanban className="h-5 w-5" />} label="Projects" onClick={() => setNav('projects')} />
             <BottomNav icon={<ListChecks className="h-5 w-5" />} label="Tasks" onClick={() => setNav('tasks')} />
             <BottomNav icon={<MoreHorizontal className="h-5 w-5" />} label="More" onClick={() => setNav('reports')} />
-          </div>
+          </nav>
         </div>
 
         {/* Desktop-only hint */}
-        <p className="hidden sm:block text-center text-xs text-muted-foreground mt-4">
+        <p className="hidden lg:block text-center text-xs text-muted-foreground mt-4">
           AYK site-progress companion — tap any quick action to switch to the full desktop view
         </p>
       </div>
@@ -525,6 +555,7 @@ function NotifIcon({ type }: { type: string }) {
 
 function timeAgo(d: string | Date): string {
   const date = typeof d === 'string' ? new Date(d) : d
+  if (!(date instanceof Date) || isNaN(date.getTime())) return '—'
   const diff = Date.now() - date.getTime()
   const mins = Math.floor(diff / 60000)
   if (mins < 1) return 'just now'

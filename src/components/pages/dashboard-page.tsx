@@ -1,22 +1,23 @@
 'use client'
 import { useAppStore } from '@/store/app-store'
 import { useFetch } from '@/hooks/use-fetch'
-import { PageHeader } from '@/components/shared/page-header'
+import { SectionHeader, SubSection } from '@/components/shared/section-header'
 import { StatCard } from '@/components/shared/stat-card'
 import { StatusBadge } from '@/components/shared/status-badge'
+import { EmptyState } from '@/components/shared/empty-state'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { LayoutDashboard, FolderKanban, TrendingUp, AlertTriangle, DollarSign, Wallet, Users, ListChecks, Package, ShieldAlert, ArrowRight, MapPin, Calendar, Sun } from 'lucide-react'
+import { LayoutDashboard, FolderKanban, TrendingUp, AlertTriangle, Wallet, Wallet2, Users, ListChecks, Package, ShieldAlert, ArrowRight, MapPin, Calendar, Sun, BarChart3, LineChart as LineIcon } from 'lucide-react'
+import { ChartPie as PieChartIcon } from 'lucide-react'
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip,
   BarChart, Bar, PieChart, Pie, Cell, LineChart, Line, Legend,
 } from 'recharts'
 import { formatCurrency, formatNumber, formatDate } from '@/lib/constants'
-import { cn } from '@/lib/utils'
 
-const PIE_COLORS = ['#10b981', '#0ea5e9', '#f59e0b', '#ef4444', '#a78bfa']
+const PIE_COLORS = ['#10b981', '#0ea5e9', '#f59e0b', '#ef4444']
 
 export function DashboardPage() {
   const { data, loading } = useFetch<any>('/api/dashboard')
@@ -25,10 +26,10 @@ export function DashboardPage() {
   if (loading || !data) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Dashboard" description="Solar project overview" icon={<LayoutDashboard className="h-5 w-5" />} />
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
+        <div className="h-28 rounded-2xl bg-white border border-border/60 animate-pulse" />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
           {Array.from({ length: 10 }).map((_, i) => (
-            <Card key={i} className="animate-pulse"><CardContent className="p-4 h-28" /></Card>
+            <div key={i} className="h-28 rounded-xl border border-border/60 bg-card animate-pulse" />
           ))}
         </div>
       </div>
@@ -41,41 +42,64 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title={`Welcome back, ${first || 'Team'} 👋`}
-        description="Here's what's happening across your solar projects today"
-        icon={<LayoutDashboard className="h-5 w-5" />}
+      <SectionHeader
+        section="overview"
+        title={`Welcome back, ${first || 'Team'}`}
+        description="Solar project overview · today's operations at a glance"
+        icon={<LayoutDashboard className="h-6 w-6" />}
         actions={
-          <Button onClick={() => setNav('daily-entry')} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+          <Button onClick={() => setNav('daily-entry')} variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800">
             <Sun className="h-4 w-4 mr-2" /> Update Progress
           </Button>
         }
       />
 
-      {/* Stat cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
-        <StatCard title="Active Projects" value={s.activeProjects ?? 0} subtitle={`${s.totalProjects ?? 0} total · ${s.completedProjects ?? 0} completed`} icon={<FolderKanban className="h-5 w-5" />} accent="green" />
-        <StatCard title="Overall Progress" value={`${s.overallProgress ?? 0}%`} subtitle="Across all projects" icon={<TrendingUp className="h-5 w-5" />} accent="blue" />
-        <StatCard title="Delayed Projects" value={s.delayedProjects ?? 0} subtitle="Need attention" icon={<AlertTriangle className="h-5 w-5" />} accent="red" />
-        <StatCard title="Total Budget" value={formatCurrency(s.totalBudget)} subtitle="All projects" icon={<DollarSign className="h-5 w-5" />} accent="purple" />
-        <StatCard title="Budget Used" value={formatCurrency(s.budgetUsed)} subtitle={`${formatCurrency(s.remainingBudget)} remaining`} icon={<Wallet className="h-5 w-5" />} accent="orange" />
-        <StatCard title="Total Workers" value={s.totalWorkers ?? 0} subtitle={`${s.workersOnSite ?? 0} on site today`} icon={<Users className="h-5 w-5" />} accent="blue" />
-        <StatCard title="Pending Tasks" value={s.pendingTasks ?? 0} subtitle={`${s.overdueTasks ?? 0} overdue`} icon={<ListChecks className="h-5 w-5" />} accent="orange" />
-        <StatCard title="Material Alerts" value={s.lowStockCount ?? 0} subtitle="Low stock items" icon={<Package className="h-5 w-5" />} accent="red" />
-        <StatCard title="Safety Incidents" value={s.totalIncidents ?? 0} subtitle={`${s.openIncidents ?? 0} open · ${s.nearMisses ?? 0} near miss`} icon={<ShieldAlert className="h-5 w-5" />} accent="orange" />
-        <StatCard title="PPE Compliance" value={`${s.ppeCompliance ?? 0}%`} subtitle="Average this month" icon={<ShieldAlert className="h-5 w-5" />} accent="green" />
+      {/* Operations metrics group */}
+      <div>
+        <SubSection section="overview" title="Operations" description="Project and task status" icon={<FolderKanban className="h-4 w-4" />} />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+          <StatCard section="overview" title="Active Projects" value={s.activeProjects ?? 0} subtitle={`${s.totalProjects ?? 0} total · ${s.completedProjects ?? 0} done`} icon={<FolderKanban className="h-5 w-5" />} />
+          <StatCard section="overview" title="Overall Progress" value={`${s.overallProgress ?? 0}%`} subtitle="Across all projects" icon={<TrendingUp className="h-5 w-5" />} />
+          <StatCard section="safety" title="Delayed Projects" value={s.delayedProjects ?? 0} subtitle="Need attention" icon={<AlertTriangle className="h-5 w-5" />} />
+          <StatCard section="tasks" title="Pending Tasks" value={s.pendingTasks ?? 0} subtitle={`${s.overdueTasks ?? 0} overdue`} icon={<ListChecks className="h-5 w-5" />} />
+        </div>
+      </div>
+
+      {/* Financial metrics group */}
+      <div>
+        <SubSection section="expenses" title="Financial" description="Budget and spending" icon={<Wallet className="h-4 w-4" />} />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+          <StatCard section="expenses" title="Total Budget" value={formatCurrency(s.totalBudget)} subtitle="All projects" icon={<Wallet className="h-5 w-5" />} />
+          <StatCard section="expenses" title="Budget Used" value={formatCurrency(s.budgetUsed)} subtitle="Spent to date" icon={<Wallet2 className="h-5 w-5" />} />
+          <StatCard section="overview" title="Remaining" value={formatCurrency(s.remainingBudget)} subtitle="Available" icon={<Wallet2 className="h-5 w-5" />} />
+          <StatCard section="safety" title="Material Alerts" value={s.lowStockCount ?? 0} subtitle="Low stock items" icon={<Package className="h-5 w-5" />} />
+        </div>
+      </div>
+
+      {/* Workforce + Safety metrics group */}
+      <div>
+        <SubSection section="manpower" title="Workforce & Safety" description="People and compliance" icon={<Users className="h-4 w-4" />} />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+          <StatCard section="manpower" title="Total Workers" value={s.totalWorkers ?? 0} subtitle={`${s.workersOnSite ?? 0} on site today`} icon={<Users className="h-5 w-5" />} />
+          <StatCard section="manpower" title="Absent Today" value={(s.totalWorkers ?? 0) - (s.workersOnSite ?? 0)} subtitle="Not checked in" icon={<Users className="h-5 w-5" />} />
+          <StatCard section="safety" title="Safety Incidents" value={s.totalIncidents ?? 0} subtitle={`${s.openIncidents ?? 0} open · ${s.nearMisses ?? 0} near miss`} icon={<ShieldAlert className="h-5 w-5" />} />
+          <StatCard section="safety" title="PPE Compliance" value={`${s.ppeCompliance ?? 0}%`} subtitle="Avg this month" icon={<ShieldAlert className="h-5 w-5" />} />
+        </div>
       </div>
 
       {/* Charts row 1 */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card className="lg:col-span-2">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base font-semibold">Installation Progress — Last 14 Days</CardTitle>
-            <CardDescription className="text-xs">Daily panels installed and cumulative trend</CardDescription>
+            <div className="flex items-center gap-2">
+              <BarChart3 className="h-4 w-4 text-emerald-600" />
+              <CardTitle className="text-base font-semibold">Installation Progress — Last 14 Days</CardTitle>
+            </div>
+            <CardDescription className="text-xs">Daily panels installed (units: panels/day)</CardDescription>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={260}>
-              <AreaChart data={(charts?.installationTrend) || []} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
+            <ResponsiveContainer width="100%" height={280}>
+              <AreaChart data={(charts?.installationTrend) || []} margin={{ top: 8, right: 12, left: -8, bottom: 0 }}>
                 <defs>
                   <linearGradient id="gInstalled" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#10b981" stopOpacity={0.4} />
@@ -84,12 +108,9 @@ export function DashboardPage() {
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
                 <XAxis dataKey="date" tickFormatter={(d) => { try { const dt = new Date(d); return isNaN(dt.getTime()) ? '' : dt.getDate() + '/' + (dt.getMonth() + 1) } catch { return '' } }} tick={{ fontSize: 11, fill: '#64748b' }} />
-                <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
-                <RTooltip
-                  contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}
-                  labelFormatter={(l) => formatDate(l as string)}
-                />
-                <Area type="monotone" dataKey="installed" stroke="#10b981" strokeWidth={2} fill="url(#gInstalled)" name="Installed" />
+                <YAxis tick={{ fontSize: 11, fill: '#64748b' }} label={{ value: 'panels', angle: -90, position: 'insideLeft', style: { fontSize: 11, fill: '#94a3b8' } }} />
+                <RTooltip contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }} labelFormatter={(l) => formatDate(l as string)} />
+                <Area type="monotone" dataKey="installed" stroke="#10b981" strokeWidth={2.5} fill="url(#gInstalled)" name="Installed" />
               </AreaChart>
             </ResponsiveContainer>
           </CardContent>
@@ -97,11 +118,14 @@ export function DashboardPage() {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base font-semibold">Project Status</CardTitle>
+            <div className="flex items-center gap-2">
+              <PieChartIcon className="h-4 w-4 text-sky-600" />
+              <CardTitle className="text-base font-semibold">Project Status</CardTitle>
+            </div>
             <CardDescription className="text-xs">Distribution across all projects</CardDescription>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={260}>
+            <ResponsiveContainer width="100%" height={280}>
               <PieChart>
                 <Pie
                   data={[
@@ -114,9 +138,9 @@ export function DashboardPage() {
                   nameKey="name"
                   cx="50%"
                   cy="50%"
-                  innerRadius={55}
-                  outerRadius={85}
-                  paddingAngle={2}
+                  innerRadius={60}
+                  outerRadius={90}
+                  paddingAngle={3}
                 >
                   {[0,1,2,3].map(i => <Cell key={i} fill={PIE_COLORS[i]} />)}
                 </Pie>
@@ -132,14 +156,17 @@ export function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base font-semibold">Budget vs Actual</CardTitle>
+            <div className="flex items-center gap-2">
+              <Wallet className="h-4 w-4 text-pink-600" />
+              <CardTitle className="text-base font-semibold">Budget vs Actual</CardTitle>
+            </div>
             <CardDescription className="text-xs">By project (S$)</CardDescription>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={(charts?.budgetChart) || []} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={(charts?.budgetChart) || []} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#64748b' }} interval={0} angle={-15} textAnchor="end" height={50} />
+                <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#64748b' }} interval={0} angle={-15} textAnchor="end" height={60} />
                 <YAxis tick={{ fontSize: 11, fill: '#64748b' }} tickFormatter={(v) => formatCurrency(v)} />
                 <RTooltip contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }} formatter={(v: any) => formatCurrency(v)} />
                 <Legend iconType="circle" wrapperStyle={{ fontSize: 11 }} />
@@ -152,17 +179,20 @@ export function DashboardPage() {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base font-semibold">Manpower on Site — Last 7 Days</CardTitle>
-            <CardDescription className="text-xs">Daily worker count present on site</CardDescription>
+            <div className="flex items-center gap-2">
+              <LineIcon className="h-4 w-4 text-cyan-600" />
+              <CardTitle className="text-base font-semibold">Manpower on Site — Last 7 Days</CardTitle>
+            </div>
+            <CardDescription className="text-xs">Daily worker count (units: workers)</CardDescription>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={260}>
-              <LineChart data={(charts?.manpowerTrend) || []} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
+            <ResponsiveContainer width="100%" height={280}>
+              <LineChart data={(charts?.manpowerTrend) || []} margin={{ top: 8, right: 12, left: -8, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
                 <XAxis dataKey="date" tickFormatter={(d) => { try { const dt = new Date(d); return isNaN(dt.getTime()) ? '' : dt.getDate() + '/' + (dt.getMonth() + 1) } catch { return '' } }} tick={{ fontSize: 11, fill: '#64748b' }} />
                 <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
                 <RTooltip contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }} labelFormatter={(l) => formatDate(l as string)} />
-                <Line type="monotone" dataKey="workers" stroke="#0ea5e9" strokeWidth={2.5} dot={{ r: 4, fill: '#0ea5e9' }} name="Workers" />
+                <Line type="monotone" dataKey="workers" stroke="#06b6d4" strokeWidth={2.5} dot={{ r: 4, fill: '#06b6d4' }} name="Workers" />
               </LineChart>
             </ResponsiveContainer>
           </CardContent>
@@ -171,12 +201,13 @@ export function DashboardPage() {
 
       {/* Low stock alerts */}
       {data.lowStockMaterials && data.lowStockMaterials.length > 0 && (
-        <Card className="border-amber-200 bg-amber-50/30">
+        <Card className="border-amber-200 bg-amber-50/40">
           <CardHeader className="pb-3">
-            <CardTitle className="text-base font-semibold flex items-center gap-2 text-amber-700">
-              <AlertTriangle className="h-4 w-4" /> Material Stock Alerts
-            </CardTitle>
-            <CardDescription className="text-xs">{data.lowStockMaterials.length} item(s) below minimum stock level</CardDescription>
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-600" />
+              <CardTitle className="text-base font-semibold text-amber-800">Material Stock Alerts</CardTitle>
+            </div>
+            <CardDescription className="text-xs text-amber-700">{data.lowStockMaterials.length} item(s) below minimum stock level — please restock</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -196,18 +227,22 @@ export function DashboardPage() {
         </Card>
       )}
 
-      {/* Projects */}
+      {/* Active Projects */}
       <div>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-semibold text-slate-900">Active Projects</h2>
-          <Button variant="ghost" size="sm" className="text-emerald-600 hover:text-emerald-700" onClick={() => setNav('projects')}>
+        <SubSection section="projects" title="Active Projects" description="Click a project to see full details" icon={<FolderKanban className="h-4 w-4" />} action={
+          <Button variant="ghost" size="sm" className="text-sky-600 hover:text-sky-700" onClick={() => setNav('projects')}>
             View all <ArrowRight className="h-4 w-4 ml-1" />
           </Button>
-        </div>
+        } />
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {(data.projects || []).filter((p: any) => p.status !== 'Completed').slice(0, 6).map((p: any) => (
             <ProjectCard key={p.id} project={p} onOpen={() => openProject(p.id)} />
           ))}
+          {(!data.projects || data.projects.filter((p: any) => p.status !== 'Completed').length === 0) && (
+            <div className="md:col-span-2 xl:col-span-3">
+              <EmptyState icon={<FolderKanban className="h-6 w-6" />} title="No active projects" description="All projects are completed or on hold." />
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -222,13 +257,15 @@ function ProjectCard({ project, onOpen }: { project: any; onOpen: () => void }) 
   const actualCost = Number(project.actualCost ?? 0)
   const installPct = totalPanels > 0 ? Math.round((installedPanels / totalPanels) * 1000) / 10 : 0
   return (
-    <Card className="overflow-hidden hover:shadow-lg transition-shadow cursor-pointer group border-border/60" onClick={onOpen}>
+    <Card className="overflow-hidden hover:shadow-lg transition-all hover:-translate-y-0.5 cursor-pointer group border-border/60" onClick={onOpen}>
+      {/* Color-coded top strip by status */}
+      <div className={`h-1.5 w-full ${project.status === 'Delayed' ? 'bg-red-500' : project.status === 'Completed' ? 'bg-sky-500' : project.status === 'OnHold' ? 'bg-amber-500' : 'bg-emerald-500'}`} />
       <CardContent className="p-5">
         <div className="flex items-start justify-between gap-2 mb-3">
           <div className="min-w-0">
             <h3 className="font-semibold text-slate-900 truncate group-hover:text-emerald-600 transition">{project.name || 'Untitled'}</h3>
             <div className="flex items-center gap-1 text-xs text-slate-500 mt-0.5">
-              <MapPin className="h-3 w-3" /> {project.location || '—'}
+              <MapPin className="h-3 w-3 shrink-0" /> <span className="truncate">{project.location || '—'}</span>
             </div>
           </div>
           <StatusBadge status={project.status || 'Active'} />
@@ -237,7 +274,7 @@ function ProjectCard({ project, onOpen }: { project: any; onOpen: () => void }) 
         <div className="space-y-3">
           <div>
             <div className="flex items-center justify-between text-xs mb-1">
-              <span className="text-slate-600">Overall Progress</span>
+              <span className="text-slate-600 font-medium">Overall Progress</span>
               <span className="font-semibold text-slate-900">{pct}%</span>
             </div>
             <Progress value={pct} className="h-2" />
@@ -245,12 +282,12 @@ function ProjectCard({ project, onOpen }: { project: any; onOpen: () => void }) 
 
           <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
             <div>
-              <div className="text-[10px] text-slate-500 uppercase tracking-wide">Panels</div>
+              <div className="text-[10px] text-slate-500 uppercase tracking-wide font-semibold">Panels</div>
               <div className="text-sm font-semibold text-slate-900">{formatNumber(installedPanels)} / {formatNumber(totalPanels)}</div>
               <Progress value={installPct} className="h-1.5 mt-1" />
             </div>
             <div>
-              <div className="text-[10px] text-slate-500 uppercase tracking-wide">Budget</div>
+              <div className="text-[10px] text-slate-500 uppercase tracking-wide font-semibold">Budget</div>
               <div className="text-sm font-semibold text-slate-900">{formatCurrency(actualCost)} / {formatCurrency(budget)}</div>
               <Progress value={budget > 0 ? Math.min(100, (actualCost / budget) * 100) : 0} className="h-1.5 mt-1" />
             </div>

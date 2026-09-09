@@ -119,6 +119,7 @@ export type NavKey =
   | 'settings'
   | 'mobile'
   | 'daily-entry'
+  | 'guide'
 
 export interface NavItem {
   key: NavKey
@@ -129,13 +130,13 @@ export interface NavItem {
 
 // Role-based permissions matrix
 export const PERMISSIONS: Record<RoleKey, NavKey[]> = {
-  Admin: ['dashboard', 'projects', 'progress', 'tasks', 'manpower', 'materials', 'expenses', 'safety', 'documents', 'reports', 'settings', 'mobile', 'daily-entry'],
-  ProjectManager: ['dashboard', 'projects', 'progress', 'tasks', 'manpower', 'materials', 'expenses', 'safety', 'documents', 'reports', 'mobile', 'daily-entry'],
-  SiteSupervisor: ['dashboard', 'progress', 'tasks', 'manpower', 'safety', 'documents', 'mobile', 'daily-entry'],
-  SafetyOfficer: ['dashboard', 'safety', 'documents', 'mobile', 'daily-entry'],
-  Engineer: ['dashboard', 'projects', 'progress', 'tasks', 'documents', 'mobile'],
-  StoreOfficer: ['dashboard', 'materials', 'expenses', 'documents', 'mobile'],
-  Worker: ['dashboard', 'tasks', 'mobile', 'daily-entry'],
+  Admin: ['dashboard', 'projects', 'progress', 'tasks', 'manpower', 'materials', 'expenses', 'safety', 'documents', 'reports', 'settings', 'mobile', 'daily-entry', 'guide'],
+  ProjectManager: ['dashboard', 'projects', 'progress', 'tasks', 'manpower', 'materials', 'expenses', 'safety', 'documents', 'reports', 'mobile', 'daily-entry', 'guide'],
+  SiteSupervisor: ['dashboard', 'progress', 'tasks', 'manpower', 'safety', 'documents', 'mobile', 'daily-entry', 'guide'],
+  SafetyOfficer: ['dashboard', 'safety', 'documents', 'mobile', 'daily-entry', 'guide'],
+  Engineer: ['dashboard', 'projects', 'progress', 'tasks', 'documents', 'mobile', 'guide'],
+  StoreOfficer: ['dashboard', 'materials', 'expenses', 'documents', 'mobile', 'guide'],
+  Worker: ['dashboard', 'tasks', 'mobile', 'daily-entry', 'guide'],
 }
 
 export const MOBILE_NAV_KEYS: NavKey[] = ['mobile', 'dashboard', 'projects', 'tasks', 'reports']

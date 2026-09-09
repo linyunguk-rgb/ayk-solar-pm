@@ -1,0 +1,672 @@
+     1→     1→'use client'
+     2→     2→import { useState, useMemo, useCallback } from 'react'
+     3→     3→import { useAppStore } from '@/store/app-store'
+     4→     4→import { useFetch, apiPost, apiPut, apiDelete } from '@/hooks/use-fetch'
+     5→     5→import { PageHeader } from '@/components/shared/page-header'
+     6→     6→import { StatCard } from '@/components/shared/stat-card'
+     7→     7→import { StatusBadge } from '@/components/shared/status-badge'
+     8→     8→import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+     9→     9→import { Button } from '@/components/ui/button'
+    10→    10→import { Input } from '@/components/ui/input'
+    11→    11→import { Textarea } from '@/components/ui/textarea'
+    12→    12→import { Label } from '@/components/ui/label'
+    13→    13→import { Badge } from '@/components/ui/badge'
+    14→    14→import {
+    15→    15→  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+    16→    16→} from '@/components/ui/select'
+    17→    17→import {
+    18→    18→  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
+    19→    19→} from '@/components/ui/dialog'
+    20→    20→import {
+    21→    21→  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+    22→    22→  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+    23→    23→} from '@/components/ui/alert-dialog'
+    24→    24→import {
+    25→    25→  Table, TableHeader, TableBody, TableHead, TableRow, TableCell,
+    26→    26→} from '@/components/ui/table'
+    27→    27→import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+    28→    28→import { ScrollArea } from '@/components/ui/scroll-area'
+    29→    29→import {
+    30→    30→  Users, Plus, Filter, Pencil, Trash2, LogIn, LogOut, Clock, UserCheck, UserX, Briefcase,
+    31→    31→  Search, X, BarChart3,
+    32→    32→} from 'lucide-react'
+    33→    33→import {
+    34→    34→  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip,
+    35→    35→} from 'recharts'
+    36→    36→import { formatDate, formatDateTime, formatNumber } from '@/lib/constants'
+    37→    37→import { toast } from 'sonner'
+    38→    38→import { cn } from '@/lib/utils'
+    39→    39→
+    40→    40→interface WorkerItem {
+    41→    41→  id: string
+    42→    42→  name: string
+    43→    43→  employeeId: string
+    44→    44→  role: string
+    45→    45→  team?: string | null
+    46→    46→  projectId?: string | null
+    47→    47→  project?: { id: string; name: string } | null
+    48→    48→  phone?: string | null
+    49→    49→  skillLevel: string
+    50→    50→  status: string
+    51→    51→  attendance?: AttendanceItem[]
+    52→    52→}
+    53→    53→
+    54→    54→interface AttendanceItem {
+    55→    55→  id: string
+    56→    56→  workerId: string
+    57→    57→  worker?: { id: string; name: string; team?: string | null; project?: { name: string } | null }
+    58→    58→  date: string
+    59→    59→  checkIn?: string | null
+    60→    60→  checkOut?: string | null
+    61→    61→  workingHours: number
+    62→    62→  overtime: number
+    63→    63→  status: string
+    64→    64→}
+    65→    65→
+    66→    66→interface ProjectOption { id: string; name: string }
+    67→    67→
+    68→    68→const ROLES_OPTIONS = ['Solar Installer', 'Electrician', 'Foreman', 'Technician', 'Helper', 'Crane Operator']
+    69→    69→const SKILL_LEVELS = ['Junior', 'Intermediate', 'Senior']
+    70→    70→const WORKER_STATUSES = ['Active', 'OnLeave', 'Inactive']
+    71→    71→const WORKER_STATUS_LABELS: Record<string, string> = {
+    72→    72→  Active: 'Active', OnLeave: 'On Leave', Inactive: 'Inactive',
+    73→    73→}
+    74→    74→
+    75→    75→const SKILL_BADGE: Record<string, string> = {
+    76→    76→  Junior: 'bg-slate-100 text-slate-700 border-slate-200',
+    77→    77→  Intermediate: 'bg-sky-100 text-sky-700 border-sky-200',
+    78→    78→  Senior: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+    79→    79→}
+    80→    80→
+    81→    81→const isSameDay = (a: Date, b: Date) =>
+    82→    82→  a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
+    83→    83→
+    84→    84→const toISODate = (d: Date) => d.toISOString().slice(0, 10)
+    85→    85→
+    86→    86→function emptyWorkerForm(): WorkerFormState {
+    87→    87→  return {
+    88→    88→    name: '', employeeId: '', role: 'Solar Installer', team: '',
+    89→    89→    projectId: '', phone: '', skillLevel: 'Intermediate', status: 'Active',
+    90→    90→  }
+    91→    91→}
+    92→    92→
+    93→    93→interface WorkerFormState {
+    94→    94→  name: string
+    95→    95→  employeeId: string
+    96→    96→  role: string
+    97→    97→  team: string
+    98→    98→  projectId: string
+    99→    99→  phone: string
+   100→   100→  skillLevel: string
+   101→   101→  status: string
+   102→   102→}
+   103→   103→
+   104→   104→export function ManpowerPage() {
+   105→   105→  const { user } = useAppStore()
+   106→   106→  const canManage = user?.role === 'Admin' || user?.role === 'ProjectManager'
+   107→   107→
+   108→   108→  // Filters
+   109→   109→  const [projectFilter, setProjectFilter] = useState<string>('all')
+   110→   110→  const [teamFilter, setTeamFilter] = useState<string>('all')
+   111→   111→  const [statusFilter, setStatusFilter] = useState<string>('all')
+   112→   112→
+   113→   113→  const [tab, setTab] = useState<string>('workers')
+   114→   114→
+   115→   115→  const [dialogOpen, setDialogOpen] = useState(false)
+   116→   116→  const [editing, setEditing] = useState<WorkerItem | null>(null)
+   117→   117→  const [form, setForm] = useState<WorkerFormState>(emptyWorkerForm())
+   118→   118→  const [deleteId, setDeleteId] = useState<string | null>(null)
+   119→   119→  const [submitting, setSubmitting] = useState(false)
+   120→   120→  const [actionLoading, setActionLoading] = useState<string | null>(null)
+   121→   121→
+   122→   122→  // 7-day window for attendance stats and productivity chart
+   123→   123→  const attendanceWindow = useMemo(() => {
+   124→   124→    const to = new Date(); to.setHours(23, 59, 59, 999)
+   125→   125→    const from = new Date(); from.setDate(from.getDate() - 6); from.setHours(0, 0, 0, 0)
+   126→   126→    return { from: from.toISOString(), to: to.toISOString() }
+   127→   127→  }, [])
+   128→   128→
+   129→   129→  const workersUrl = useMemo(() => {
+   130→   130→    const params = new URLSearchParams()
+   131→   131→    if (projectFilter !== 'all') params.set('projectId', projectFilter)
+   132→   132→    if (teamFilter !== 'all') params.set('team', teamFilter)
+   133→   133→    if (statusFilter !== 'all') params.set('status', statusFilter)
+   134→   134→    const q = params.toString()
+   135→   135→    return `/api/workers${q ? `?${q}` : ''}`
+   136→   136→  }, [projectFilter, teamFilter, statusFilter])
+   137→   137→
+   138→   138→  const { data, loading, refetch } = useFetch<{ workers: WorkerItem[] }>(workersUrl)
+   139→   139→  const { data: projData } = useFetch<{ projects: ProjectOption[] }>('/api/projects')
+   140→   140→  const { data: attData } = useFetch<{ records: AttendanceItem[] }>(
+   141→   141→    `/api/attendance?from=${attendanceWindow.from}&to=${attendanceWindow.to}`
+   142→   142→  )
+   143→   143→
+   144→   144→  const workers = data?.workers ?? []
+   145→   145→  const projects = projData?.projects ?? []
+   146→   146→  const attendanceRecords = attData?.records ?? []
+   147→   147→
+   148→   148→  // Teams derived from workers (unique, non-empty)
+   149→   149→  const teams = useMemo(() => {
+   150→   150→    const set = new Set<string>()
+   151→   151→    for (const w of workers) if (w.team) set.add(w.team)
+   152→   152→    return Array.from(set).sort()
+   153→   153→  }, [workers])
+   154→   154→
+   155→   155→  // Stats
+   156→   156→  const stats = useMemo(() => {
+   157→   157→    const today = new Date()
+   158→   158→    let onSite = 0
+   159→   159→    let absent = 0
+   160→   160→    let totalManHours = 0
+   161→   161→
+   162→   162→    for (const w of workers) {
+   163→   163→      const todayAtt = (w.attendance || []).find((a) => isSameDay(new Date(a.date), today))
+   164→   164→      if (todayAtt && todayAtt.status === 'Present') onSite++
+   165→   165→      else if (w.status === 'Active') absent++
+   166→   166→    }
+   167→   167→    for (const r of attendanceRecords) totalManHours += Number(r.workingHours) || 0
+   168→   168→    return {
+   169→   169→      onSite,
+   170→   170→      absent,
+   171→   171→      total: workers.length,
+   172→   172→      manHours: Math.round(totalManHours * 10) / 10,
+   173→   173→    }
+   174→   174→  }, [workers, attendanceRecords])
+   175→   175→
+   176→   176→  // Productivity chart data: man-hours per team over last 7 days
+   177→   177→  const productivity = useMemo(() => {
+   178→   178→    const teamHours: Record<string, number> = {}
+   179→   179→    for (const r of attendanceRecords) {
+   180→   180→      const team = r.worker?.team || 'Unassigned'
+   181→   181→      teamHours[team] = (teamHours[team] || 0) + (Number(r.workingHours) || 0)
+   182→   182→    }
+   183→   183→    const entries = Object.entries(teamHours).map(([team, hours]) => ({
+   184→   184→      team: team.length > 12 ? team.slice(0, 11) + '…' : team,
+   185→   185→      hours: Math.round(hours * 10) / 10,
+   186→   186→    }))
+   187→   187→    entries.sort((a, b) => b.hours - a.hours)
+   188→   188→    return entries.slice(0, 10)
+   189→   189→  }, [attendanceRecords])
+   190→   190→
+   191→   191→  // Today's hours per worker (for table column)
+   192→   192→  const todayHoursByWorker = useMemo(() => {
+   193→   193→    const map: Record<string, number> = {}
+   194→   194→    const now = new Date()
+   195→   195→    for (const w of workers) {
+   196→   196→      const todayAtt = (w.attendance || []).find((a) => isSameDay(new Date(a.date), now))
+   197→   197→      if (!todayAtt) { map[w.id] = 0; continue }
+   198→   198→      if (todayAtt.workingHours) {
+   199→   199→        map[w.id] = Number(todayAtt.workingHours)
+   200→   200→      } else if (todayAtt.checkIn) {
+   201→   201→        const ms = now.getTime() - new Date(todayAtt.checkIn).getTime()
+   202→   202→        map[w.id] = Math.max(0, Math.round((ms / (1000 * 60 * 60)) * 10) / 10)
+   203→   203→      } else {
+   204→   204→        map[w.id] = 0
+   205→   205→      }
+   206→   206→    }
+   207→   207→    return map
+   208→   208→  }, [workers])
+   209→   209→
+   210→   210→  const isWorkerCheckedIn = useCallback((w: WorkerItem) => {
+   211→   211→    const today = new Date()
+   212→   212→    const att = (w.attendance || []).find((a) => isSameDay(new Date(a.date), today))
+   213→   213→    return !!(att && att.status === 'Present' && att.checkIn && !att.checkOut)
+   214→   214→  }, [])
+   215→   215→
+   216→   216→  const isWorkerCheckedOut = useCallback((w: WorkerItem) => {
+   217→   217→    const today = new Date()
+   218→   218→    const att = (w.attendance || []).find((a) => isSameDay(new Date(a.date), today))
+   219→   219→    return !!(att && att.checkIn && att.checkOut)
+   220→   220→  }, [])
+   221→   221→
+   222→   222→  const handleCheckAction = async (worker: WorkerItem, action: 'checkin' | 'checkout') => {
+   223→   223→    setActionLoading(worker.id)
+   224→   224→    try {
+   225→   225→      await apiPost(`/api/workers/${worker.id}`, { action })
+   226→   226→      toast.success(action === 'checkin' ? `${worker.name} checked in` : `${worker.name} checked out`)
+   227→   227→      await refetch()
+   228→   228→    } catch (e: any) {
+   229→   229→      toast.error(e.message || 'Failed to update attendance')
+   230→   230→    } finally {
+   231→   231→      setActionLoading(null)
+   232→   232→    }
+   233→   233→  }
+   234→   234→
+   235→   235→  const openNew = useCallback(() => {
+   236→   236→    setEditing(null)
+   237→   237→    setForm(emptyWorkerForm())
+   238→   238→    setDialogOpen(true)
+   239→   239→  }, [])
+   240→   240→
+   241→   241→  const openEdit = useCallback((w: WorkerItem) => {
+   242→   242→    setEditing(w)
+   243→   243→    setForm({
+   244→   244→      name: w.name || '',
+   245→   245→      employeeId: w.employeeId || '',
+   246→   246→      role: w.role || 'Solar Installer',
+   247→   247→      team: w.team || '',
+   248→   248→      projectId: w.projectId || '',
+   249→   249→      phone: w.phone || '',
+   250→   250→      skillLevel: w.skillLevel || 'Intermediate',
+   251→   251→      status: w.status || 'Active',
+   252→   252→    })
+   253→   253→    setDialogOpen(true)
+   254→   254→  }, [])
+   255→   255→
+   256→   256→  const handleSubmit = async () => {
+   257→   257→    if (!form.name.trim() || !form.employeeId.trim()) {
+   258→   258→      toast.error('Name and Employee ID are required')
+   259→   259→      return
+   260→   260→    }
+   261→   261→    setSubmitting(true)
+   262→   262→    try {
+   263→   263→      const payload = {
+   264→   264→        name: form.name.trim(),
+   265→   265→        employeeId: form.employeeId.trim(),
+   266→   266→        role: form.role,
+   267→   267→        team: form.team.trim() || undefined,
+   268→   268→        projectId: form.projectId || undefined,
+   269→   269→        phone: form.phone.trim() || undefined,
+   270→   270→        skillLevel: form.skillLevel,
+   271→   271→        status: form.status,
+   272→   272→      }
+   273→   273→      if (editing) {
+   274→   274→        await apiPut(`/api/workers/${editing.id}`, payload)
+   275→   275→        toast.success('Worker updated')
+   276→   276→      } else {
+   277→   277→        await apiPost('/api/workers', payload)
+   278→   278→        toast.success('Worker added')
+   279→   279→      }
+   280→   280→      setDialogOpen(false)
+   281→   281→      await refetch()
+   282→   282→    } catch (e: any) {
+   283→   283→      toast.error(e.message || 'Failed to save worker')
+   284→   284→    } finally {
+   285→   285→      setSubmitting(false)
+   286→   286→    }
+   287→   287→  }
+   288→   288→
+   289→   289→  const handleDelete = async () => {
+   290→   290→    if (!deleteId) return
+   291→   291→    try {
+   292→   292→      await apiDelete(`/api/workers/${deleteId}`)
+   293→   293→      toast.success('Worker removed')
+   294→   294→      setDeleteId(null)
+   295→   295→      await refetch()
+   296→   296→    } catch (e: any) {
+   297→   297→      toast.error(e.message || 'Failed to delete worker')
+   298→   298→    }
+   299→   299→  }
+   300→   300→
+   301→   301→  const clearFilters = () => {
+   302→   302→    setProjectFilter('all'); setTeamFilter('all'); setStatusFilter('all')
+   303→   303→  }
+   304→   304→  const hasFilters = projectFilter !== 'all' || teamFilter !== 'all' || statusFilter !== 'all'
+   305→   305→
+   306→   306→  return (
+   307→   307→    <div className="space-y-6">
+   308→   308→      <PageHeader
+   309→   309→        title="Manpower Management"
+   310→   310→        description="Track workers, teams and attendance"
+   311→   311→        icon={<Users className="h-5 w-5" />}
+   312→   312→        actions={
+   313→   313→          canManage ? (
+   314→   314→            <Button onClick={openNew} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+   315→   315→              <Plus className="h-4 w-4 mr-2" /> Add Worker
+   316→   316→            </Button>
+   317→   317→          ) : undefined
+   318→   318→        }
+   319→   319→      />
+   320→   320→
+   321→   321→      {/* Stat cards */}
+   322→   322→      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+   323→   323→        <StatCard title="Workers On Site" value={stats.onSite} subtitle="Checked in today" icon={<UserCheck className="h-5 w-5" />} accent="green" />
+   324→   324→        <StatCard title="Workers Absent" value={stats.absent} subtitle="Active, not present" icon={<UserX className="h-5 w-5" />} accent="red" />
+   325→   325→        <StatCard title="Total Workers" value={stats.total} subtitle="In roster" icon={<Briefcase className="h-5 w-5" />} accent="blue" />
+   326→   326→        <StatCard title="Total Man-hours" value={formatNumber(stats.manHours)} subtitle="Last 7 days" icon={<Clock className="h-5 w-5" />} accent="orange" />
+   327→   327→      </div>
+   328→   328→
+   329→   329→      {/* Productivity chart */}
+   330→   330→      <Card className="border-border/60 shadow-sm">
+   331→   331→        <CardHeader className="pb-2">
+   332→   332→          <div className="flex items-center justify-between">
+   333→   333→            <div>
+   334→   334→              <CardTitle className="text-base font-semibold flex items-center gap-2">
+   335→   335→                <BarChart3 className="h-4 w-4 text-emerald-600" /> Team Productivity
+   336→   336→              </CardTitle>
+   337→   337→              <CardDescription className="text-xs">Man-hours per team — last 7 days</CardDescription>
+   338→   338→            </div>
+   339→   339→            <Badge variant="outline" className="border-slate-200 text-slate-600">{productivity.length} teams</Badge>
+   340→   340→          </div>
+   341→   341→        </CardHeader>
+   342→   342→        <CardContent>
+   343→   343→          {productivity.length === 0 ? (
+   344→   344→            <div className="text-center text-sm text-slate-500 py-10">No attendance data for the past 7 days</div>
+   345→   345→          ) : (
+   346→   346→            <ResponsiveContainer width="100%" height={260}>
+   347→   347→              <BarChart data={productivity} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
+   348→   348→                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+   349→   349→                <XAxis dataKey="team" tick={{ fontSize: 11, fill: '#64748b' }} interval={0} angle={-15} textAnchor="end" height={50} />
+   350→   350→                <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
+   351→   351→                <RTooltip
+   352→   352→                  contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}
+   353→   353→                  formatter={(v: any) => [`${v} h`, 'Man-hours']}
+   354→   354→                />
+   355→   355→                <Bar dataKey="hours" fill="#10b981" radius={[4, 4, 0, 0]} name="Man-hours" />
+   356→   356→              </BarChart>
+   357→   357→            </ResponsiveContainer>
+   358→   358→          )}
+   359→   359→        </CardContent>
+   360→   360→      </Card>
+   361→   361→
+   362→   362→      {/* Tabs */}
+   363→   363→      <Tabs value={tab} onValueChange={setTab}>
+   364→   364→        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+   365→   365→          <TabsList>
+   366→   366→            <TabsTrigger value="workers"><Users className="h-4 w-4 mr-1" /> Workers</TabsTrigger>
+   367→   367→            <TabsTrigger value="attendance"><Clock className="h-4 w-4 mr-1" /> Attendance Log</TabsTrigger>
+   368→   368→          </TabsList>
+   369→   369→
+   370→   370→          {/* Filter bar (shared) */}
+   371→   371→          <div className="flex flex-wrap items-center gap-2">
+   372→   372→            <Filter className="h-4 w-4 text-slate-400" />
+   373→   373→            <Select value={projectFilter} onValueChange={setProjectFilter}>
+   374→   374→              <SelectTrigger size="sm" className="w-[150px] bg-white"><SelectValue placeholder="All Projects" /></SelectTrigger>
+   375→   375→              <SelectContent>
+   376→   376→                <SelectItem value="all">All Projects</SelectItem>
+   377→   377→                {projects.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+   378→   378→              </SelectContent>
+   379→   379→            </Select>
+   380→   380→
+   381→   381→            <Select value={teamFilter} onValueChange={setTeamFilter}>
+   382→   382→              <SelectTrigger size="sm" className="w-[140px] bg-white"><SelectValue placeholder="All Teams" /></SelectTrigger>
+   383→   383→              <SelectContent>
+   384→   384→                <SelectItem value="all">All Teams</SelectItem>
+   385→   385→                {teams.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+   386→   386→              </SelectContent>
+   387→   387→            </Select>
+   388→   388→
+   389→   389→            <Select value={statusFilter} onValueChange={setStatusFilter}>
+   390→   390→              <SelectTrigger size="sm" className="w-[130px] bg-white"><SelectValue placeholder="All Statuses" /></SelectTrigger>
+   391→   391→              <SelectContent>
+   392→   392→                <SelectItem value="all">All Statuses</SelectItem>
+   393→   393→                {WORKER_STATUSES.map((s) => <SelectItem key={s} value={s}>{WORKER_STATUS_LABELS[s]}</SelectItem>)}
+   394→   394→              </SelectContent>
+   395→   395→            </Select>
+   396→   396→
+   397→   397→            {hasFilters && (
+   398→   398→              <Button variant="ghost" size="sm" onClick={clearFilters} className="text-slate-500">
+   399→   399→                <X className="h-3.5 w-3.5 mr-1" /> Clear
+   400→   400→              </Button>
+   401→   401→            )}
+   402→   402→          </div>
+   403→   403→        </div>
+   404→   404→
+   405→   405→        {/* Workers tab */}
+   406→   406→        <TabsContent value="workers">
+   407→   407→          {loading ? (
+   408→   408→            <Card className="border-border/60 shadow-sm animate-pulse"><CardContent className="p-0 h-96" /></Card>
+   409→   409→          ) : workers.length === 0 ? (
+   410→   410→            <EmptyState message="No workers match your filters" />
+   411→   411→          ) : (
+   412→   412→            <Card className="border-border/60 shadow-sm">
+   413→   413→              <CardContent className="p-0">
+   414→   414→                <ScrollArea className="max-h-96">
+   415→   415→                  <Table>
+   416→   416→                    <TableHeader className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur">
+   417→   417→                      <TableRow className="hover:bg-transparent">
+   418→   418→                        <TableHead>Emp ID</TableHead>
+   419→   419→                        <TableHead>Name</TableHead>
+   420→   420→                        <TableHead>Role</TableHead>
+   421→   421→                        <TableHead>Team</TableHead>
+   422→   422→                        <TableHead>Project</TableHead>
+   423→   423→                        <TableHead>Skill</TableHead>
+   424→   424→                        <TableHead>Status</TableHead>
+   425→   425→                        <TableHead>Phone</TableHead>
+   426→   426→                        <TableHead>Today (h)</TableHead>
+   427→   427→                        <TableHead className="text-right">Actions</TableHead>
+   428→   428→                      </TableRow>
+   429→   429→                    </TableHeader>
+   430→   430→                    <TableBody>
+   431→   431→                      {workers.map((w) => {
+   432→   432→                        const checkedIn = isWorkerCheckedIn(w)
+   433→   433→                        const checkedOut = isWorkerCheckedOut(w)
+   434→   434→                        return (
+   435→   435→                          <TableRow key={w.id}>
+   436→   436→                            <TableCell className="text-xs font-mono text-slate-600">{w.employeeId}</TableCell>
+   437→   437→                            <TableCell className="font-medium text-slate-900">{w.name}</TableCell>
+   438→   438→                            <TableCell className="text-slate-700 text-xs">{w.role}</TableCell>
+   439→   439→                            <TableCell className="text-slate-700 text-xs">{w.team || '—'}</TableCell>
+   440→   440→                            <TableCell className="text-slate-600 text-xs truncate max-w-[140px]">{w.project?.name || '—'}</TableCell>
+   441→   441→                            <TableCell>
+   442→   442→                              <Badge variant="outline" className={cn('font-medium', SKILL_BADGE[w.skillLevel] || SKILL_BADGE.Intermediate)}>
+   443→   443→                                {w.skillLevel}
+   444→   444→                              </Badge>
+   445→   445→                            </TableCell>
+   446→   446→                            <TableCell><StatusBadge status={w.status} /></TableCell>
+   447→   447→                            <TableCell className="text-xs text-slate-600">{w.phone || '—'}</TableCell>
+   448→   448→                            <TableCell>
+   449→   449→                              <span className={cn('text-xs font-medium tabular-nums', (todayHoursByWorker[w.id] || 0) > 0 ? 'text-emerald-700' : 'text-slate-400')}>
+   450→   450→                                {formatNumber(todayHoursByWorker[w.id] || 0)}
+   451→   451→                              </span>
+   452→   452→                            </TableCell>
+   453→   453→                            <TableCell className="text-right">
+   454→   454→                              <div className="flex items-center justify-end gap-1">
+   455→   455→                                <Button
+   456→   456→                                  size="sm" variant="outline"
+   457→   457→                                  disabled={!canManage || checkedIn || actionLoading === w.id}
+   458→   458→                                  onClick={() => handleCheckAction(w, 'checkin')}
+   459→   459→                                  className="h-7 px-2 text-emerald-700 border-emerald-200 bg-emerald-50 hover:bg-emerald-100"
+   460→   460→                                  title={checkedIn ? 'Already checked in' : 'Check-in'}
+   461→   461→                                >
+   462→   462→                                  <LogIn className="h-3.5 w-3.5" />
+   463→   463→                                </Button>
+   464→   464→                                <Button
+   465→   465→                                  size="sm" variant="outline"
+   466→   466→                                  disabled={!canManage || !checkedIn || checkedOut || actionLoading === w.id}
+   467→   467→                                  onClick={() => handleCheckAction(w, 'checkout')}
+   468→   468→                                  className="h-7 px-2 text-orange-700 border-orange-200 bg-orange-50 hover:bg-orange-100"
+   469→   469→                                  title={!checkedIn ? 'Check-in first' : checkedOut ? 'Already checked out' : 'Check-out'}
+   470→   470→                                >
+   471→   471→                                  <LogOut className="h-3.5 w-3.5" />
+   472→   472→                                </Button>
+   473→   473→                                {canManage && (
+   474→   474→                                  <>
+   475→   475→                                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-emerald-600" onClick={() => openEdit(w)}>
+   476→   476→                                      <Pencil className="h-3.5 w-3.5" />
+   477→   477→                                    </Button>
+   478→   478→                                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-red-600" onClick={() => setDeleteId(w.id)}>
+   479→   479→                                      <Trash2 className="h-3.5 w-3.5" />
+   480→   480→                                    </Button>
+   481→   481→                                  </>
+   482→   482→                                )}
+   483→   483→                              </div>
+   484→   484→                            </TableCell>
+   485→   485→                          </TableRow>
+   486→   486→                        )
+   487→   487→                      })}
+   488→   488→                    </TableBody>
+   489→   489→                  </Table>
+   490→   490→                </ScrollArea>
+   491→   491→              </CardContent>
+   492→   492→            </Card>
+   493→   493→          )}
+   494→   494→        </TabsContent>
+   495→   495→
+   496→   496→        {/* Attendance log tab */}
+   497→   497→        <TabsContent value="attendance">
+   498→   498→          <Card className="border-border/60 shadow-sm">
+   499→   499→            <CardHeader className="pb-3">
+   500→   500→              <CardTitle className="text-base font-semibold">Attendance Log</CardTitle>
+   501→   501→              <CardDescription className="text-xs">Showing last 7 days of attendance records</CardDescription>
+   502→   502→            </CardHeader>
+   503→   503→            <CardContent className="p-0">
+   504→   504→              {attendanceRecords.length === 0 ? (
+   505→   505→                <div className="text-center text-sm text-slate-500 py-10">No attendance records for the past 7 days</div>
+   506→   506→              ) : (
+   507→   507→                <ScrollArea className="max-h-96">
+   508→   508→                  <Table>
+   509→   509→                    <TableHeader className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur">
+   510→   510→                      <TableRow className="hover:bg-transparent">
+   511→   511→                        <TableHead>Date</TableHead>
+   512→   512→                        <TableHead>Worker</TableHead>
+   513→   513→                        <TableHead>Team</TableHead>
+   514→   514→                        <TableHead>Check-in</TableHead>
+   515→   515→                        <TableHead>Check-out</TableHead>
+   516→   516→                        <TableHead>Working Hours</TableHead>
+   517→   517→                        <TableHead>Overtime</TableHead>
+   518→   518→                        <TableHead>Status</TableHead>
+   519→   519→                      </TableRow>
+   520→   520→                    </TableHeader>
+   521→   521→                    <TableBody>
+   522→   522→                      {attendanceRecords.map((r) => (
+   523→   523→                        <TableRow key={r.id}>
+   524→   524→                          <TableCell className="text-xs text-slate-600">{formatDate(r.date)}</TableCell>
+   525→   525→                          <TableCell className="font-medium text-slate-900 text-sm">{r.worker?.name || '—'}</TableCell>
+   526→   526→                          <TableCell className="text-xs text-slate-600">{r.worker?.team || '—'}</TableCell>
+   527→   527→                          <TableCell className="text-xs text-slate-600">{r.checkIn ? formatDateTime(r.checkIn) : '—'}</TableCell>
+   528→   528→                          <TableCell className="text-xs text-slate-600">{r.checkOut ? formatDateTime(r.checkOut) : '—'}</TableCell>
+   529→   529→                          <TableCell>
+   530→   530→                            <span className="text-xs font-semibold text-slate-700 tabular-nums">{formatNumber(Number(r.workingHours) || 0)} h</span>
+   531→   531→                          </TableCell>
+   532→   532→                          <TableCell>
+   533→   533→                            {Number(r.overtime) > 0 ? (
+   534→   534→                              <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-xs">
+   535→   535→                                +{formatNumber(Number(r.overtime))} h
+   536→   536→                              </Badge>
+   537→   537→                            ) : <span className="text-xs text-slate-400">—</span>}
+   538→   538→                          </TableCell>
+   539→   539→                          <TableCell><StatusBadge status={r.status} /></TableCell>
+   540→   540→                        </TableRow>
+   541→   541→                      ))}
+   542→   542→                    </TableBody>
+   543→   543→                  </Table>
+   544→   544→                </ScrollArea>
+   545→   545→              )}
+   546→   546→            </CardContent>
+   547→   547→          </Card>
+   548→   548→        </TabsContent>
+   549→   549→      </Tabs>
+   550→   550→
+   551→   551→      {/* Add/Edit worker dialog */}
+   552→   552→      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+   553→   553→        <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto ayk-scrollbar">
+   554→   554→          <DialogHeader>
+   555→   555→            <DialogTitle>{editing ? 'Edit Worker' : 'Add Worker'}</DialogTitle>
+   556→   556→            <DialogDescription>
+   557→   557→              {editing ? 'Update the worker details below.' : 'Enter the details of the new team member.'}
+   558→   558→            </DialogDescription>
+   559→   559→          </DialogHeader>
+   560→   560→
+   561→   561→          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   562→   562→            <div className="space-y-1.5">
+   563→   563→              <Label htmlFor="w-name">Name <span className="text-red-500">*</span></Label>
+   564→   564→              <Input id="w-name" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="e.g. Ahmad Rahman" />
+   565→   565→            </div>
+   566→   566→            <div className="space-y-1.5">
+   567→   567→              <Label htmlFor="w-emp">Employee ID <span className="text-red-500">*</span></Label>
+   568→   568→              <Input id="w-emp" value={form.employeeId} onChange={(e) => setForm((f) => ({ ...f, employeeId: e.target.value }))} placeholder="e.g. AYK-W001" />
+   569→   569→            </div>
+   570→   570→
+   571→   571→            <div className="space-y-1.5">
+   572→   572→              <Label>Role</Label>
+   573→   573→              <Select value={form.role} onValueChange={(v) => setForm((f) => ({ ...f, role: v }))}>
+   574→   574→                <SelectTrigger className="w-full bg-white"><SelectValue /></SelectTrigger>
+   575→   575→                <SelectContent>
+   576→   576→                  {ROLES_OPTIONS.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+   577→   577→                </SelectContent>
+   578→   578→              </Select>
+   579→   579→            </div>
+   580→   580→
+   581→   581→            <div className="space-y-1.5">
+   582→   582→              <Label>Team</Label>
+   583→   583→              <Select value={form.team || 'none'} onValueChange={(v) => setForm((f) => ({ ...f, team: v === 'none' ? '' : v }))}>
+   584→   584→                <SelectTrigger className="w-full bg-white"><SelectValue placeholder="Select team" /></SelectTrigger>
+   585→   585→                <SelectContent>
+   586→   586→                  <SelectItem value="none">No team</SelectItem>
+   587→   587→                  {teams.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+   588→   588→                </SelectContent>
+   589→   589→              </Select>
+   590→   590→            </div>
+   591→   591→
+   592→   592→            <div className="space-y-1.5">
+   593→   593→              <Label>Project</Label>
+   594→   594→              <Select value={form.projectId || 'none'} onValueChange={(v) => setForm((f) => ({ ...f, projectId: v === 'none' ? '' : v }))}>
+   595→   595→                <SelectTrigger className="w-full bg-white"><SelectValue placeholder="No project" /></SelectTrigger>
+   596→   596→                <SelectContent>
+   597→   597→                  <SelectItem value="none">No project</SelectItem>
+   598→   598→                  {projects.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+   599→   599→                </SelectContent>
+   600→   600→              </Select>
+   601→   601→            </div>
+   602→   602→
+   603→   603→            <div className="space-y-1.5">
+   604→   604→              <Label htmlFor="w-phone">Phone</Label>
+   605→   605→              <Input id="w-phone" value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} placeholder="+65 9123 4567" />
+   606→   606→            </div>
+   607→   607→
+   608→   608→            <div className="space-y-1.5">
+   609→   609→              <Label>Skill Level</Label>
+   610→   610→              <Select value={form.skillLevel} onValueChange={(v) => setForm((f) => ({ ...f, skillLevel: v }))}>
+   611→   611→                <SelectTrigger className="w-full bg-white"><SelectValue /></SelectTrigger>
+   612→   612→                <SelectContent>
+   613→   613→                  {SKILL_LEVELS.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+   614→   614→                </SelectContent>
+   615→   615→              </Select>
+   616→   616→            </div>
+   617→   617→
+   618→   618→            <div className="space-y-1.5">
+   619→   619→              <Label>Status</Label>
+   620→   620→              <Select value={form.status} onValueChange={(v) => setForm((f) => ({ ...f, status: v }))}>
+   621→   621→                <SelectTrigger className="w-full bg-white"><SelectValue /></SelectTrigger>
+   622→   622→                <SelectContent>
+   623→   623→                  {WORKER_STATUSES.map((s) => <SelectItem key={s} value={s}>{WORKER_STATUS_LABELS[s]}</SelectItem>)}
+   624→   624→                </SelectContent>
+   625→   625→              </Select>
+   626→   626→            </div>
+   627→   627→          </div>
+   628→   628→
+   629→   629→          <DialogFooter>
+   630→   630→            <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
+   631→   631→            <Button disabled={submitting} onClick={handleSubmit} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+   632→   632→              {submitting ? 'Saving…' : editing ? 'Update Worker' : 'Add Worker'}
+   633→   633→            </Button>
+   634→   634→          </DialogFooter>
+   635→   635→        </DialogContent>
+   636→   636→      </Dialog>
+   637→   637→
+   638→   638→      {/* Delete confirm */}
+   639→   639→      <AlertDialog open={!!deleteId} onOpenChange={(o) => !o && setDeleteId(null)}>
+   640→   640→        <AlertDialogContent>
+   641→   641→          <AlertDialogHeader>
+   642→   642→            <AlertDialogTitle>Remove this worker?</AlertDialogTitle>
+   643→   643→            <AlertDialogDescription>
+   644→   644→              This will permanently remove the worker from the roster. Attendance history will also be deleted.
+   645→   645→            </AlertDialogDescription>
+   646→   646→          </AlertDialogHeader>
+   647→   647→          <AlertDialogFooter>
+   648→   648→            <AlertDialogCancel>Cancel</AlertDialogCancel>
+   649→   649→            <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700 text-white">
+   650→   650→              Remove
+   651→   651→            </AlertDialogAction>
+   652→   652→          </AlertDialogFooter>
+   653→   653→        </AlertDialogContent>
+   654→   654→      </AlertDialog>
+   655→   655→    </div>
+   656→   656→  )
+   657→   657→}
+   658→   658→
+   659→   659→function EmptyState({ message }: { message: string }) {
+   660→   660→  return (
+   661→   661→    <Card className="border-dashed border-slate-300 bg-slate-50/50">
+   662→   662→      <CardContent className="py-16 flex flex-col items-center justify-center text-center">
+   663→   663→        <div className="h-12 w-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mb-3">
+   664→   664→          <Search className="h-6 w-6" />
+   665→   665→        </div>
+   666→   666→        <h3 className="text-base font-semibold text-slate-800">No results</h3>
+   667→   667→        <p className="text-sm text-slate-500 mt-1 max-w-sm">{message}</p>
+   668→   668→      </CardContent>
+   669→   669→    </Card>
+   670→   670→  )
+   671→   671→}
+   672→   672→

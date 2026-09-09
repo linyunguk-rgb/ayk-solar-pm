@@ -1,0 +1,757 @@
+     1→     1→     1→'use client'
+     2→     2→     2→import { useState, useCallback } from 'react'
+     3→     3→     3→import { useAppStore } from '@/store/app-store'
+     4→     4→     4→import { useFetch, apiPost, apiPut, apiDelete } from '@/hooks/use-fetch'
+     5→     5→     5→import { PageHeader } from '@/components/shared/page-header'
+     6→     6→     6→import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+     7→     7→     7→import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+     8→     8→     8→import { Button } from '@/components/ui/button'
+     9→     9→     9→import { Input } from '@/components/ui/input'
+    10→    10→    10→import { Label } from '@/components/ui/label'
+    11→    11→    11→import { Badge } from '@/components/ui/badge'
+    12→    12→    12→import { Switch } from '@/components/ui/switch'
+    13→    13→    13→import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+    14→    14→    14→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+    15→    15→    15→import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table'
+    16→    16→    16→import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription, DialogTrigger } from '@/components/ui/dialog'
+    17→    17→    17→import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogAction, AlertDialogCancel } from '@/components/ui/alert-dialog'
+    18→    18→    18→import { ScrollArea } from '@/components/ui/scroll-area'
+    19→    19→    19→import { toast } from 'sonner'
+    20→    20→    20→import {
+    21→    21→    21→  Settings, User as UserIcon, Users, Building2, Bell, Lock, Plus,
+    22→    22→    22→  Pencil, Trash2, UserPlus, ShieldCheck, Loader2, Save, KeyRound,
+    23→    23→    23→} from 'lucide-react'
+    24→    24→    24→import { ROLES, APP_NAME, APP_TAGLINE, NOTIFICATION_TYPES, formatDate, type RoleKey } from '@/lib/constants'
+    25→    25→    25→
+    26→    26→    26→// ---------- helpers ----------
+    27→    27→    27→const ROLE_BADGE: Record<string, string> = {
+    28→    28→    28→  Admin: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+    29→    29→    29→  ProjectManager: 'bg-sky-100 text-sky-700 border-sky-200',
+    30→    30→    30→  SiteSupervisor: 'bg-violet-100 text-violet-700 border-violet-200',
+    31→    31→    31→  SafetyOfficer: 'bg-red-100 text-red-700 border-red-200',
+    32→    32→    32→  Engineer: 'bg-blue-100 text-blue-700 border-blue-200',
+    33→    33→    33→  StoreOfficer: 'bg-amber-100 text-amber-700 border-amber-200',
+    34→    34→    34→  Worker: 'bg-slate-100 text-slate-700 border-slate-200',
+    35→    35→    35→}
+    36→    36→    36→
+    37→    37→    37→interface UserRow {
+    38→    38→    38→  id: string
+    39→    39→    39→  email: string
+    40→    40→    40→  name: string
+    41→    41→    41→  role: string
+    42→    42→    42→  phone?: string | null
+    43→    43→    43→  avatar?: string | null
+    44→    44→    44→  isActive: boolean
+    45→    45→    45→  createdAt: string
+    46→    46→    46→}
+    47→    47→    47→
+    48→    48→    48→// ============================================================
+    49→    49→    49→// Main
+    50→    50→    50→// ============================================================
+    51→    51→    51→export function SettingsPage() {
+    52→    52→    52→  return (
+    53→    53→    53→    <div className="space-y-6">
+    54→    54→    54→      <PageHeader
+    55→    55→    55→        title="Settings"
+    56→    56→    56→        description="Manage your account and system preferences"
+    57→    57→    57→        icon={<Settings className="h-5 w-5" />}
+    58→    58→    58→      />
+    59→    59→    59→      <Tabs defaultValue="profile" className="w-full">
+    60→    60→    60→        <TabsList className="grid grid-cols-2 sm:grid-cols-5 h-auto w-full">
+    61→    61→    61→          <TabsTrigger value="profile" className="gap-1.5"><UserIcon className="h-4 w-4" /> Profile</TabsTrigger>
+    62→    62→    62→          <TabsTrigger value="users" className="gap-1.5"><Users className="h-4 w-4" /> Users</TabsTrigger>
+    63→    63→    63→          <TabsTrigger value="company" className="gap-1.5"><Building2 className="h-4 w-4" /> Company</TabsTrigger>
+    64→    64→    64→          <TabsTrigger value="notifications" className="gap-1.5"><Bell className="h-4 w-4" /> Alerts</TabsTrigger>
+    65→    65→    65→          <TabsTrigger value="security" className="gap-1.5"><Lock className="h-4 w-4" /> Security</TabsTrigger>
+    66→    66→    66→        </TabsList>
+    67→    67→    67→        <TabsContent value="profile" className="mt-4"><ProfileTab /></TabsContent>
+    68→    68→    68→        <TabsContent value="users" className="mt-4"><UsersTab /></TabsContent>
+    69→    69→    69→        <TabsContent value="company" className="mt-4"><CompanyTab /></TabsContent>
+    70→    70→    70→        <TabsContent value="notifications" className="mt-4"><NotificationsTab /></TabsContent>
+    71→    71→    71→        <TabsContent value="security" className="mt-4"><SecurityTab /></TabsContent>
+    72→    72→    72→      </Tabs>
+    73→    73→    73→    </div>
+    74→    74→    74→  )
+    75→    75→    75→}
+    76→    76→    76→
+    77→    77→    77→// ============================================================
+    78→    78→    78→// Profile tab
+    79→    79→    79→// ============================================================
+    80→    80→    80→function ProfileTab() {
+    81→    81→    81→  const { user, setUser } = useAppStore()
+    82→    82→    82→  const [name, setName] = useState(user?.name || '')
+    83→    83→    83→  const [phone, setPhone] = useState(user?.phone || '')
+    84→    84→    84→  const [password, setPassword] = useState('')
+    85→    85→    85→  const [saving, setSaving] = useState(false)
+    86→    86→    86→
+    87→    87→    87→  if (!user) return null
+    88→    88→    88→
+    89→    89→    89→  const handleSave = async () => {
+    90→    90→    90→    if (!user) return
+    91→    91→    91→    setSaving(true)
+    92→    92→    92→    try {
+    93→    93→    93→      const body: any = { name, phone }
+    94→    94→    94→      if (password) body.password = password
+    95→    95→    95→      const res = await apiPut<{ user: UserRow }>(`/api/users/${user.id}`, body)
+    96→    96→    96→      setUser({
+    97→    97→    97→        ...user,
+    98→    98→    98→        name: res.user.name,
+    99→    99→    99→        phone: res.user.phone,
+   100→   100→   100→      })
+   101→   101→   101→      setPassword('')
+   102→   102→   102→      toast.success('Profile updated')
+   103→   103→   103→    } catch (e: any) {
+   104→   104→   104→      toast.error(e.message || 'Failed to update profile')
+   105→   105→   105→    } finally {
+   106→   106→   106→      setSaving(false)
+   107→   107→   107→    }
+   108→   108→   108→  }
+   109→   109→   109→
+   110→   110→   110→  return (
+   111→   111→   111→    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+   112→   112→   112→      <Card className="border-border/60 shadow-sm">
+   113→   113→   113→        <CardHeader className="pb-3">
+   114→   114→   114→          <CardTitle className="text-base">Account Overview</CardTitle>
+   115→   115→   115→          <CardDescription className="text-xs">Your signed-in identity</CardDescription>
+   116→   116→   116→        </CardHeader>
+   117→   117→   117→        <CardContent className="flex flex-col items-center text-center gap-3 pt-2">
+   118→   118→   118→          <Avatar className="h-20 w-20">
+   119→   119→   119→            <AvatarFallback className="bg-emerald-600 text-white text-2xl font-semibold">
+   120→   120→   120→              {user.name?.[0]?.toUpperCase() || 'U'}
+   121→   121→   121→            </AvatarFallback>
+   122→   122→   122→          </Avatar>
+   123→   123→   123→          <div>
+   124→   124→   124→            <div className="text-base font-semibold text-foreground">{user.name}</div>
+   125→   125→   125→            <div className="text-xs text-muted-foreground">{user.email}</div>
+   126→   126→   126→          </div>
+   127→   127→   127→          <Badge className={`border ${ROLE_BADGE[user.role] || 'bg-slate-100 text-slate-700 border-slate-200'}`}>
+   128→   128→   128→            {ROLES[user.role as RoleKey] || user.role}
+   129→   129→   129→          </Badge>
+   130→   130→   130→          <div className="grid grid-cols-1 gap-2 w-full text-left pt-3 mt-2 border-t border-border/60">
+   131→   131→   131→            <Row label="Phone" value={user.phone || '—'} />
+   132→   132→   132→            <Row label="Member since" value={formatDate(new Date().toISOString())} />
+   133→   133→   133→            <Row label="Status" value={<Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 border">Active</Badge>} />
+   134→   134→   134→          </div>
+   135→   135→   135→        </CardContent>
+   136→   136→   136→      </Card>
+   137→   137→   137→
+   138→   138→   138→      <Card className="lg:col-span-2 border-border/60 shadow-sm">
+   139→   139→   139→        <CardHeader className="pb-3">
+   140→   140→   140→          <CardTitle className="text-base">Edit Profile</CardTitle>
+   141→   141→   141→          <CardDescription className="text-xs">Update your name, contact, or password</CardDescription>
+   142→   142→   142→        </CardHeader>
+   143→   143→   143→        <CardContent className="space-y-4 pt-2">
+   144→   144→   144→          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   145→   145→   145→            <div className="space-y-1.5">
+   146→   146→   146→              <Label htmlFor="p-name">Full name</Label>
+   147→   147→   147→              <Input id="p-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" />
+   148→   148→   148→            </div>
+   149→   149→   149→            <div className="space-y-1.5">
+   150→   150→   150→              <Label htmlFor="p-email">Email</Label>
+   151→   151→   151→              <Input id="p-email" value={user.email} disabled className="bg-muted/50" />
+   152→   152→   152→            </div>
+   153→   153→   153→            <div className="space-y-1.5">
+   154→   154→   154→              <Label htmlFor="p-phone">Phone</Label>
+   155→   155→   155→              <Input id="p-phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+65 6XXX XXXX" />
+   156→   156→   156→            </div>
+   157→   157→   157→            <div className="space-y-1.5">
+   158→   158→   158→              <Label htmlFor="p-role">Role</Label>
+   159→   159→   159→              <Input id="p-role" value={ROLES[user.role as RoleKey] || user.role} disabled className="bg-muted/50" />
+   160→   160→   160→            </div>
+   161→   161→   161→            <div className="space-y-1.5 sm:col-span-2">
+   162→   162→   162→              <Label htmlFor="p-pw">New password (optional)</Label>
+   163→   163→   163→              <Input id="p-pw" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Leave blank to keep current" />
+   164→   164→   164→              <p className="text-[11px] text-muted-foreground">Demo accounts use format <code>demo$&lt;plain&gt;</code>.</p>
+   165→   165→   165→            </div>
+   166→   166→   166→          </div>
+   167→   167→   167→          <div className="flex justify-end pt-2 border-t border-border/60">
+   168→   168→   168→            <Button onClick={handleSave} disabled={saving} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2">
+   169→   169→   169→              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+   170→   170→   170→              Save changes
+   171→   171→   171→            </Button>
+   172→   172→   172→          </div>
+   173→   173→   173→        </CardContent>
+   174→   174→   174→      </Card>
+   175→   175→   175→    </div>
+   176→   176→   176→  )
+   177→   177→   177→}
+   178→   178→   178→
+   179→   179→   179→function Row({ label, value }: { label: string; value: React.ReactNode }) {
+   180→   180→   180→  return (
+   181→   181→   181→    <div className="flex items-center justify-between gap-3">
+   182→   182→   182→      <span className="text-xs text-muted-foreground">{label}</span>
+   183→   183→   183→      <span className="text-sm font-medium text-foreground text-right truncate">{value}</span>
+   184→   184→   184→    </div>
+   185→   185→   185→  )
+   186→   186→   186→}
+   187→   187→   187→
+   188→   188→   188→// ============================================================
+   189→   189→   189→// Users tab (Admin only)
+   190→   190→   190→// ============================================================
+   191→   191→   191→function UsersTab() {
+   192→   192→   192→  const { user } = useAppStore()
+   193→   193→   193→  const { data, loading, refetch } = useFetch<{ users: UserRow[] }>('/api/users')
+   194→   194→   194→  const [addOpen, setAddOpen] = useState(false)
+   195→   195→   195→  const [editUser, setEditUser] = useState<UserRow | null>(null)
+   196→   196→   196→  const [deleteUser, setDeleteUser] = useState<UserRow | null>(null)
+   197→   197→   197→
+   198→   198→   198→  if (!user) return null
+   199→   199→   199→  if (user.role !== 'Admin') {
+   200→   200→   200→    return (
+   201→   201→   201→      <Card className="border-border/60 shadow-sm">
+   202→   202→   202→        <CardContent className="py-12 flex flex-col items-center text-center gap-3">
+   203→   203→   203→          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 text-amber-600">
+   204→   204→   204→            <Lock className="h-7 w-7" />
+   205→   205→   205→          </div>
+   206→   206→   206→          <div>
+   207→   207→   207→            <div className="font-semibold text-foreground">Admins only</div>
+   208→   208→   208→            <p className="text-sm text-muted-foreground max-w-sm mt-1">
+   209→   209→   209→              User management is restricted to administrators. Contact your AYK administrator if you need access.
+   210→   210→   210→            </p>
+   211→   211→   211→          </div>
+   212→   212→   212→        </CardContent>
+   213→   213→   213→      </Card>
+   214→   214→   214→    )
+   215→   215→   215→  }
+   216→   216→   216→
+   217→   217→   217→  const users: UserRow[] = data?.users || []
+   218→   218→   218→
+   219→   219→   219→  return (
+   220→   220→   220→    <Card className="border-border/60 shadow-sm">
+   221→   221→   221→      <CardHeader className="pb-3">
+   222→   222→   222→        <div className="flex items-center justify-between gap-3">
+   223→   223→   223→          <div>
+   224→   224→   224→            <CardTitle className="text-base flex items-center gap-2"><Users className="h-4 w-4 text-emerald-600" /> User Management</CardTitle>
+   225→   225→   225→            <CardDescription className="text-xs">{users.length} registered user(s)</CardDescription>
+   226→   226→   226→          </div>
+   227→   227→   227→          <Dialog open={addOpen} onOpenChange={setAddOpen}>
+   228→   228→   228→            <DialogTrigger asChild>
+   229→   229→   229→              <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2">
+   230→   230→   230→                <UserPlus className="h-4 w-4" /> Add User
+   231→   231→   231→              </Button>
+   232→   232→   232→            </DialogTrigger>
+   233→   233→   233→            <DialogContent>
+   234→   234→   234→              <AddUserForm
+   235→   235→   235→                onClose={() => setAddOpen(false)}
+   236→   236→   236→                onCreated={() => { refetch(); setAddOpen(false) }}
+   237→   237→   237→              />
+   238→   238→   238→            </DialogContent>
+   239→   239→   239→          </Dialog>
+   240→   240→   240→        </div>
+   241→   241→   241→      </CardHeader>
+   242→   242→   242→      <CardContent className="pt-2">
+   243→   243→   243→        {loading ? (
+   244→   244→   244→          <div className="py-12 flex items-center justify-center text-muted-foreground">
+   245→   245→   245→            <Loader2 className="h-5 w-5 animate-spin mr-2" /> Loading users…
+   246→   246→   246→          </div>
+   247→   247→   247→        ) : (
+   248→   248→   248→          <ScrollArea className="max-h-[60vh] ayk-scrollbar">
+   249→   249→   249→            <Table>
+   250→   250→   250→              <TableHeader>
+   251→   251→   251→                <TableRow>
+   252→   252→   252→                  <TableHead>Name</TableHead>
+   253→   253→   253→                  <TableHead>Email</TableHead>
+   254→   254→   254→                  <TableHead>Role</TableHead>
+   255→   255→   255→                  <TableHead>Phone</TableHead>
+   256→   256→   256→                  <TableHead>Status</TableHead>
+   257→   257→   257→                  <TableHead>Created</TableHead>
+   258→   258→   258→                  <TableHead className="text-right">Actions</TableHead>
+   259→   259→   259→                </TableRow>
+   260→   260→   260→              </TableHeader>
+   261→   261→   261→              <TableBody>
+   262→   262→   262→                {users.map((u) => (
+   263→   263→   263→                  <TableRow key={u.id}>
+   264→   264→   264→                    <TableCell className="font-medium">{u.name}</TableCell>
+   265→   265→   265→                    <TableCell className="text-muted-foreground text-xs">{u.email}</TableCell>
+   266→   266→   266→                    <TableCell>
+   267→   267→   267→                      <Badge className={`border ${ROLE_BADGE[u.role] || 'bg-slate-100 text-slate-700 border-slate-200'}`}>
+   268→   268→   268→                        {ROLES[u.role as RoleKey] || u.role}
+   269→   269→   269→                      </Badge>
+   270→   270→   270→                    </TableCell>
+   271→   271→   271→                    <TableCell className="text-xs">{u.phone || '—'}</TableCell>
+   272→   272→   272→                    <TableCell>
+   273→   273→   273→                      <Badge className={u.isActive ? 'bg-emerald-100 text-emerald-700 border-emerald-200 border' : 'bg-slate-100 text-slate-500 border-slate-200 border'}>
+   274→   274→   274→                        {u.isActive ? 'Active' : 'Inactive'}
+   275→   275→   275→                      </Badge>
+   276→   276→   276→                    </TableCell>
+   277→   277→   277→                    <TableCell className="text-xs text-muted-foreground">{formatDate(u.createdAt)}</TableCell>
+   278→   278→   278→                    <TableCell className="text-right">
+   279→   279→   279→                      <div className="flex items-center justify-end gap-1">
+   280→   280→   280→                        <Button variant="ghost" size="icon" onClick={() => setEditUser(u)} aria-label="Edit user" title="Edit">
+   281→   281→   281→                          <Pencil className="h-4 w-4" />
+   282→   282→   282→                        </Button>
+   283→   283→   283→                        <Button
+   284→   284→   284→                          variant="ghost"
+   285→   285→   285→                          size="icon"
+   286→   286→   286→                          onClick={() => setDeleteUser(u)}
+   287→   287→   287→                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+   288→   288→   288→                          aria-label="Deactivate user"
+   289→   289→   289→                          title="Deactivate"
+   290→   290→   290→                          disabled={!u.isActive}
+   291→   291→   291→                        >
+   292→   292→   292→                          <Trash2 className="h-4 w-4" />
+   293→   293→   293→                        </Button>
+   294→   294→   294→                      </div>
+   295→   295→   295→                    </TableCell>
+   296→   296→   296→                  </TableRow>
+   297→   297→   297→                ))}
+   298→   298→   298→              </TableBody>
+   299→   299→   299→            </Table>
+   300→   300→   300→          </ScrollArea>
+   301→   301→   301→        )}
+   302→   302→   302→      </CardContent>
+   303→   303→   303→
+   304→   304→   304→      {/* Edit dialog */}
+   305→   305→   305→      <Dialog open={!!editUser} onOpenChange={(o) => !o && setEditUser(null)}>
+   306→   306→   306→        <DialogContent>
+   307→   307→   307→          {editUser && (
+   308→   308→   308→            <EditUserForm
+   309→   309→   309→              user={editUser}
+   310→   310→   310→              onClose={() => setEditUser(null)}
+   311→   311→   311→              onSaved={() => { refetch(); setEditUser(null) }}
+   312→   312→   312→            />
+   313→   313→   313→          )}
+   314→   314→   314→        </DialogContent>
+   315→   315→   315→      </Dialog>
+   316→   316→   316→
+   317→   317→   317→      {/* Deactivate alert */}
+   318→   318→   318→      <AlertDialog open={!!deleteUser} onOpenChange={(o) => !o && setDeleteUser(null)}>
+   319→   319→   319→        <AlertDialogContent>
+   320→   320→   320→          <AlertDialogHeader>
+   321→   321→   321→            <AlertDialogTitle>Deactivate user?</AlertDialogTitle>
+   322→   322→   322→            <AlertDialogDescription>
+   323→   323→   323→              This will mark <strong>{deleteUser?.name}</strong> ({deleteUser?.email}) as inactive. They will no longer be able to log in. This action can be reversed later.
+   324→   324→   324→            </AlertDialogDescription>
+   325→   325→   325→          </AlertDialogHeader>
+   326→   326→   326→          <AlertDialogFooter>
+   327→   327→   327→            <AlertDialogCancel>Cancel</AlertDialogCancel>
+   328→   328→   328→            <AlertDialogAction
+   329→   329→   329→              className="bg-red-600 hover:bg-red-700 text-white"
+   330→   330→   330→              onClick={async (e) => {
+   331→   331→   331→                e.preventDefault()
+   332→   332→   332→                if (!deleteUser) return
+   333→   333→   333→                try {
+   334→   334→   334→                  await apiDelete(`/api/users/${deleteUser.id}`)
+   335→   335→   335→                  toast.success(`${deleteUser.name} deactivated`)
+   336→   336→   336→                  setDeleteUser(null)
+   337→   337→   337→                  refetch()
+   338→   338→   338→                } catch (err: any) {
+   339→   339→   339→                  toast.error(err.message || 'Failed to deactivate user')
+   340→   340→   340→                }
+   341→   341→   341→              }}
+   342→   342→   342→            >
+   343→   343→   343→              Yes, deactivate
+   344→   344→   344→            </AlertDialogAction>
+   345→   345→   345→          </AlertDialogFooter>
+   346→   346→   346→        </AlertDialogContent>
+   347→   347→   347→      </AlertDialog>
+   348→   348→   348→    </Card>
+   349→   349→   349→  )
+   350→   350→   350→}
+   351→   351→   351→
+   352→   352→   352→function AddUserForm({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+   353→   353→   353→  const [email, setEmail] = useState('')
+   354→   354→   354→  const [name, setName] = useState('')
+   355→   355→   355→  const [password, setPassword] = useState('')
+   356→   356→   356→  const [role, setRole] = useState<RoleKey>('Worker')
+   357→   357→   357→  const [phone, setPhone] = useState('')
+   358→   358→   358→  const [saving, setSaving] = useState(false)
+   359→   359→   359→
+   360→   360→   360→  const handleSubmit = async () => {
+   361→   361→   361→    if (!email || !name || !password || !role) {
+   362→   362→   362→      toast.error('Email, name, password and role are required')
+   363→   363→   363→      return
+   364→   364→   364→    }
+   365→   365→   365→    setSaving(true)
+   366→   366→   366→    try {
+   367→   367→   367→      await apiPost('/api/users', { email, name, password, role, phone })
+   368→   368→   368→      toast.success('User created')
+   369→   369→   369→      onCreated()
+   370→   370→   370→    } catch (e: any) {
+   371→   371→   371→      toast.error(e.message || 'Failed to create user')
+   372→   372→   372→    } finally {
+   373→   373→   373→      setSaving(false)
+   374→   374→   374→    }
+   375→   375→   375→  }
+   376→   376→   376→
+   377→   377→   377→  return (
+   378→   378→   378→    <>
+   379→   379→   379→      <DialogHeader>
+   380→   380→   380→        <DialogTitle className="flex items-center gap-2"><UserPlus className="h-4 w-4 text-emerald-600" /> Add User</DialogTitle>
+   381→   381→   381→        <DialogDescription>Create a new AYK system account</DialogDescription>
+   382→   382→   382→      </DialogHeader>
+   383→   383→   383→      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-2">
+   384→   384→   384→        <div className="space-y-1.5">
+   385→   385→   385→          <Label htmlFor="add-name">Full name *</Label>
+   386→   386→   386→          <Input id="add-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="John Tan" />
+   387→   387→   387→        </div>
+   388→   388→   388→        <div className="space-y-1.5">
+   389→   389→   389→          <Label htmlFor="add-email">Email *</Label>
+   390→   390→   390→          <Input id="add-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="john@ayk.com.sg" />
+   391→   391→   391→        </div>
+   392→   392→   392→        <div className="space-y-1.5">
+   393→   393→   393→          <Label htmlFor="add-pw">Password *</Label>
+   394→   394→   394→          <Input id="add-pw" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Initial password" />
+   395→   395→   395→        </div>
+   396→   396→   396→        <div className="space-y-1.5">
+   397→   397→   397→          <Label htmlFor="add-phone">Phone</Label>
+   398→   398→   398→          <Input id="add-phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+65 9XXX XXXX" />
+   399→   399→   399→        </div>
+   400→   400→   400→        <div className="space-y-1.5 sm:col-span-2">
+   401→   401→   401→          <Label htmlFor="add-role">Role *</Label>
+   402→   402→   402→          <Select value={role} onValueChange={(v) => setRole(v as RoleKey)}>
+   403→   403→   403→            <SelectTrigger id="add-role" className="w-full"><SelectValue /></SelectTrigger>
+   404→   404→   404→            <SelectContent>
+   405→   405→   405→              {Object.entries(ROLES).map(([k, v]) => (
+   406→   406→   406→                <SelectItem key={k} value={k}>{v}</SelectItem>
+   407→   407→   407→              ))}
+   408→   408→   408→            </SelectContent>
+   409→   409→   409→          </Select>
+   410→   410→   410→        </div>
+   411→   411→   411→      </div>
+   412→   412→   412→      <DialogFooter>
+   413→   413→   413→        <Button variant="ghost" onClick={onClose}>Cancel</Button>
+   414→   414→   414→        <Button onClick={handleSubmit} disabled={saving} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2">
+   415→   415→   415→          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+   416→   416→   416→          Create user
+   417→   417→   417→        </Button>
+   418→   418→   418→      </DialogFooter>
+   419→   419→   419→    </>
+   420→   420→   420→  )
+   421→   421→   421→}
+   422→   422→   422→
+   423→   423→   423→function EditUserForm({ user, onClose, onSaved }: { user: UserRow; onClose: () => void; onSaved: () => void }) {
+   424→   424→   424→  const [name, setName] = useState(user.name)
+   425→   425→   425→  const [role, setRole] = useState<RoleKey>(user.role as RoleKey)
+   426→   426→   426→  const [phone, setPhone] = useState(user.phone || '')
+   427→   427→   427→  const [isActive, setIsActive] = useState(user.isActive)
+   428→   428→   428→  const [password, setPassword] = useState('')
+   429→   429→   429→  const [saving, setSaving] = useState(false)
+   430→   430→   430→
+   431→   431→   431→  const handleSubmit = async () => {
+   432→   432→   432→    setSaving(true)
+   433→   433→   433→    try {
+   434→   434→   434→      const body: any = { name, role, phone, isActive }
+   435→   435→   435→      if (password) body.password = password
+   436→   436→   436→      await apiPut(`/api/users/${user.id}`, body)
+   437→   437→   437→      toast.success('User updated')
+   438→   438→   438→      onSaved()
+   439→   439→   439→    } catch (e: any) {
+   440→   440→   440→      toast.error(e.message || 'Failed to update user')
+   441→   441→   441→    } finally {
+   442→   442→   442→      setSaving(false)
+   443→   443→   443→    }
+   444→   444→   444→  }
+   445→   445→   445→
+   446→   446→   446→  return (
+   447→   447→   447→    <>
+   448→   448→   448→      <DialogHeader>
+   449→   449→   449→        <DialogTitle className="flex items-center gap-2"><Pencil className="h-4 w-4 text-emerald-600" /> Edit User</DialogTitle>
+   450→   450→   450→        <DialogDescription>{user.email}</DialogDescription>
+   451→   451→   451→      </DialogHeader>
+   452→   452→   452→      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-2">
+   453→   453→   453→        <div className="space-y-1.5">
+   454→   454→   454→          <Label htmlFor="ed-name">Full name</Label>
+   455→   455→   455→          <Input id="ed-name" value={name} onChange={(e) => setName(e.target.value)} />
+   456→   456→   456→        </div>
+   457→   457→   457→        <div className="space-y-1.5">
+   458→   458→   458→          <Label htmlFor="ed-phone">Phone</Label>
+   459→   459→   459→          <Input id="ed-phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+65 9XXX XXXX" />
+   460→   460→   460→        </div>
+   461→   461→   461→        <div className="space-y-1.5">
+   462→   462→   462→          <Label htmlFor="ed-role">Role</Label>
+   463→   463→   463→          <Select value={role} onValueChange={(v) => setRole(v as RoleKey)}>
+   464→   464→   464→            <SelectTrigger id="ed-role" className="w-full"><SelectValue /></SelectTrigger>
+   465→   465→   465→            <SelectContent>
+   466→   466→   466→              {Object.entries(ROLES).map(([k, v]) => (
+   467→   467→   467→                <SelectItem key={k} value={k}>{v}</SelectItem>
+   468→   468→   468→              ))}
+   469→   469→   469→            </SelectContent>
+   470→   470→   470→          </Select>
+   471→   471→   471→        </div>
+   472→   472→   472→        <div className="space-y-1.5">
+   473→   473→   473→          <Label htmlFor="ed-pw">New password (optional)</Label>
+   474→   474→   474→          <Input id="ed-pw" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Leave blank to keep" />
+   475→   475→   475→        </div>
+   476→   476→   476→        <div className="flex items-center justify-between rounded-lg border border-border/60 px-3 py-3 sm:col-span-2">
+   477→   477→   477→          <div>
+   478→   478→   478→            <div className="text-sm font-medium">Account active</div>
+   479→   479→   479→            <div className="text-xs text-muted-foreground">Inactive users cannot log in</div>
+   480→   480→   480→          </div>
+   481→   481→   481→          <Switch checked={isActive} onCheckedChange={setIsActive} />
+   482→   482→   482→        </div>
+   483→   483→   483→      </div>
+   484→   484→   484→      <DialogFooter>
+   485→   485→   485→        <Button variant="ghost" onClick={onClose}>Cancel</Button>
+   486→   486→   486→        <Button onClick={handleSubmit} disabled={saving} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2">
+   487→   487→   487→          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+   488→   488→   488→          Save changes
+   489→   489→   489→        </Button>
+   490→   490→   490→      </DialogFooter>
+   491→   491→   491→    </>
+   492→   492→   492→  )
+   493→   493→   493→}
+   494→   494→   494→
+   495→   495→   495→// ============================================================
+   496→   496→   496→// Company tab (local-only)
+   497→   497→   497→// ============================================================
+   498→   498→   498→const COMPANY_LS_KEY = 'ayk-company-settings'
+   499→   499→   499→
+   500→   500→   500→interface CompanySettings {
+   501→   501→   501→  name: string
+   502→   502→   502→  tagline: string
+   503→   503→   503→  address: string
+   504→   504→   504→  uen: string
+   505→   505→   505→  logo: string | null
+   506→   506→   506→}
+   507→   507→   507→
+   508→   508→   508→function loadCompany(): CompanySettings {
+   509→   509→   509→  if (typeof window === 'undefined') {
+   510→   510→   510→    return { name: APP_NAME, tagline: APP_TAGLINE, address: '', uen: '', logo: null }
+   511→   511→   511→  }
+   512→   512→   512→  try {
+   513→   513→   513→    const raw = window.localStorage.getItem(COMPANY_LS_KEY)
+   514→   514→   514→    if (raw) return { ...{ name: APP_NAME, tagline: APP_TAGLINE, address: '', uen: '', logo: null }, ...JSON.parse(raw) }
+   515→   515→   515→  } catch { /* ignore */ }
+   516→   516→   516→  return { name: APP_NAME, tagline: APP_TAGLINE, address: '', uen: '', logo: null }
+   517→   517→   517→}
+   518→   518→   518→
+   519→   519→   519→function CompanyTab() {
+   520→   520→   520→  const [form, setForm] = useState<CompanySettings>(() => loadCompany())
+   521→   521→   521→  const [saving, setSaving] = useState(false)
+   522→   522→   522→
+   523→   523→   523→  const handleLogo = (file?: File) => {
+   524→   524→   524→    if (!file) return
+   525→   525→   525→    const reader = new FileReader()
+   526→   526→   526→    reader.onload = () => setForm((f) => ({ ...f, logo: String(reader.result) }))
+   527→   527→   527→    reader.readAsDataURL(file)
+   528→   528→   528→  }
+   529→   529→   529→
+   530→   530→   530→  const handleSave = () => {
+   531→   531→   531→    setSaving(true)
+   532→   532→   532→    try {
+   533→   533→   533→      window.localStorage.setItem(COMPANY_LS_KEY, JSON.stringify(form))
+   534→   534→   534→      toast.success('Company settings saved')
+   535→   535→   535→    } catch {
+   536→   536→   536→      toast.error('Failed to save company settings')
+   537→   537→   537→    } finally {
+   538→   538→   538→      setSaving(false)
+   539→   539→   539→    }
+   540→   540→   540→  }
+   541→   541→   541→
+   542→   542→   542→  return (
+   543→   543→   543→    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+   544→   544→   544→      <Card className="border-border/60 shadow-sm">
+   545→   545→   545→        <CardHeader className="pb-3">
+   546→   546→   546→          <CardTitle className="text-base">Logo Preview</CardTitle>
+   547→   547→   547→          <CardDescription className="text-xs">Shows on printed reports</CardDescription>
+   548→   548→   548→        </CardHeader>
+   549→   549→   549→        <CardContent className="flex flex-col items-center gap-3">
+   550→   550→   550→          <div className="h-28 w-28 rounded-xl border-2 border-dashed border-border/60 flex items-center justify-center bg-emerald-50/40 overflow-hidden">
+   551→   551→   551→            {form.logo ? (
+   552→   552→   552→              <img src={form.logo} alt="Company logo" className="h-full w-full object-contain" />
+   553→   553→   553→            ) : (
+   554→   554→   554→              <Building2 className="h-10 w-10 text-emerald-600" />
+   555→   555→   555→            )}
+   556→   556→   556→          </div>
+   557→   557→   557→          <label className="cursor-pointer">
+   558→   558→   558→            <span className="inline-flex items-center justify-center gap-2 rounded-md border bg-background shadow-xs hover:bg-accent px-3 py-1.5 text-sm font-medium h-9">
+   559→   559→   559→              <Plus className="h-4 w-4" /> Upload
+   560→   560→   560→            </span>
+   561→   561→   561→            <input type="file" accept="image/*" className="hidden" onChange={(e) => handleLogo(e.target.files?.[0])} />
+   562→   562→   562→          </label>
+   563→   563→   563→          {form.logo && (
+   564→   564→   564→            <Button variant="ghost" size="sm" onClick={() => setForm((f) => ({ ...f, logo: null }))} className="text-red-600 hover:text-red-700">
+   565→   565→   565→              Remove logo
+   566→   566→   566→            </Button>
+   567→   567→   567→          )}
+   568→   568→   568→        </CardContent>
+   569→   569→   569→      </Card>
+   570→   570→   570→
+   571→   571→   571→      <Card className="lg:col-span-2 border-border/60 shadow-sm">
+   572→   572→   572→        <CardHeader className="pb-3">
+   573→   573→   573→          <CardTitle className="text-base flex items-center gap-2"><Building2 className="h-4 w-4 text-emerald-600" /> Company Details</CardTitle>
+   574→   574→   574→          <CardDescription className="text-xs">Stored locally in your browser</CardDescription>
+   575→   575→   575→        </CardHeader>
+   576→   576→   576→        <CardContent className="space-y-4 pt-2">
+   577→   577→   577→          <div className="space-y-1.5">
+   578→   578→   578→            <Label htmlFor="c-name">Company name</Label>
+   579→   579→   579→            <Input id="c-name" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+   580→   580→   580→          </div>
+   581→   581→   581→          <div className="space-y-1.5">
+   582→   582→   582→            <Label htmlFor="c-tag">Tagline</Label>
+   583→   583→   583→            <Input id="c-tag" value={form.tagline} onChange={(e) => setForm((f) => ({ ...f, tagline: e.target.value }))} />
+   584→   584→   584→          </div>
+   585→   585→   585→          <div className="space-y-1.5">
+   586→   586→   586→            <Label htmlFor="c-addr">Address</Label>
+   587→   587→   587→            <Input id="c-addr" value={form.address} onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))} placeholder="20 Ayer Rajah Crescent, Singapore 139964" />
+   588→   588→   588→          </div>
+   589→   589→   589→          <div className="space-y-1.5">
+   590→   590→   590→            <Label htmlFor="c-uen">UEN (Singapore business reg. no.)</Label>
+   591→   591→   591→            <Input id="c-uen" value={form.uen} onChange={(e) => setForm((f) => ({ ...f, uen: e.target.value }))} placeholder="e.g. 201812345K" />
+   592→   592→   592→          </div>
+   593→   593→   593→          <div className="flex justify-end pt-2 border-t border-border/60">
+   594→   594→   594→            <Button onClick={handleSave} disabled={saving} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2">
+   595→   595→   595→              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save
+   596→   596→   596→            </Button>
+   597→   597→   597→          </div>
+   598→   598→   598→        </CardContent>
+   599→   599→   599→      </Card>
+   600→   600→   600→    </div>
+   601→   601→   601→  )
+   602→   602→   602→}
+   603→   603→   603→
+   604→   604→   604→// ============================================================
+   605→   605→   605→// Notifications tab (local-only)
+   606→   606→   606→// ============================================================
+   607→   607→   607→const NOTIF_LS_KEY = 'ayk-notification-toggles'
+   608→   608→   608→
+   609→   609→   609→function loadNotif(): Record<string, boolean> {
+   610→   610→   610→  const defaults: Record<string, boolean> = {
+   611→   611→   611→    DelayedProject: true,
+   612→   612→   612→    LowStock: true,
+   613→   613→   613→    OverdueTask: true,
+   614→   614→   614→    SafetyIncident: true,
+   615→   615→   615→    PendingApproval: false,
+   616→   616→   616→    DailyProgress: true,
+   617→   617→   617→  }
+   618→   618→   618→  if (typeof window === 'undefined') return defaults
+   619→   619→   619→  try {
+   620→   620→   620→    const raw = window.localStorage.getItem(NOTIF_LS_KEY)
+   621→   621→   621→    if (raw) return { ...defaults, ...JSON.parse(raw) }
+   622→   622→   622→  } catch { /* ignore */ }
+   623→   623→   623→  return defaults
+   624→   624→   624→}
+   625→   625→   625→
+   626→   626→   626→function NotificationsTab() {
+   627→   627→   627→  const [toggles, setToggles] = useState<Record<string, boolean>>(() => loadNotif())
+   628→   628→   628→
+   629→   629→   629→  const updateToggle = useCallback((key: string, value: boolean) => {
+   630→   630→   630→    setToggles((prev) => {
+   631→   631→   631→      const next = { ...prev, [key]: value }
+   632→   632→   632→      try { window.localStorage.setItem(NOTIF_LS_KEY, JSON.stringify(next)) } catch { /* ignore */ }
+   633→   633→   633→      toast.success(`${NOTIFICATION_TYPES[key as keyof typeof NOTIFICATION_TYPES] || key} ${value ? 'enabled' : 'disabled'}`)
+   634→   634→   634→      return next
+   635→   635→   635→    })
+   636→   636→   636→  }, [])
+   637→   637→   637→
+   638→   638→   638→  return (
+   639→   639→   639→    <Card className="border-border/60 shadow-sm">
+   640→   640→   640→      <CardHeader className="pb-3">
+   641→   641→   641→        <CardTitle className="text-base flex items-center gap-2"><Bell className="h-4 w-4 text-emerald-600" /> Notification Preferences</CardTitle>
+   642→   642→   642→        <CardDescription className="text-xs">Choose which alerts you want to receive (stored locally)</CardDescription>
+   643→   643→   643→      </CardHeader>
+   644→   644→   644→      <CardContent className="pt-2 divide-y divide-border/60">
+   645→   645→   645→        {Object.entries(NOTIFICATION_TYPES).map(([key, label]) => (
+   646→   646→   646→          <div key={key} className="flex items-center justify-between py-3 gap-3">
+   647→   647→   647→            <div className="flex items-center gap-3">
+   648→   648→   648→              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
+   649→   649→   649→                <Bell className="h-4 w-4" />
+   650→   650→   650→              </div>
+   651→   651→   651→              <div>
+   652→   652→   652→                <div className="text-sm font-medium text-foreground">{label}</div>
+   653→   653→   653→                <div className="text-xs text-muted-foreground">Receive a notification when this event occurs</div>
+   654→   654→   654→              </div>
+   655→   655→   655→            </div>
+   656→   656→   656→            <Switch checked={!!toggles[key]} onCheckedChange={(v) => updateToggle(key, v)} />
+   657→   657→   657→          </div>
+   658→   658→   658→        ))}
+   659→   659→   659→      </CardContent>
+   660→   660→   660→    </Card>
+   661→   661→   661→  )
+   662→   662→   662→}
+   663→   663→   663→
+   664→   664→   664→// ============================================================
+   665→   665→   665→// Security tab
+   666→   666→   666→// ============================================================
+   667→   667→   667→function SecurityTab() {
+   668→   668→   668→  const { user } = useAppStore()
+   669→   669→   669→  const [cur, setCur] = useState('')
+   670→   670→   670→  const [next, setNext] = useState('')
+   671→   671→   671→  const [confirm, setConfirm] = useState('')
+   672→   672→   672→  const [twofa, setTwofa] = useState(false)
+   673→   673→   673→  const [saving, setSaving] = useState(false)
+   674→   674→   674→
+   675→   675→   675→  const handleChange = async () => {
+   676→   676→   676→    if (!user) return
+   677→   677→   677→    if (!next || next.length < 4) { toast.error('New password is too short'); return }
+   678→   678→   678→    if (next !== confirm) { toast.error('Passwords do not match'); return }
+   679→   679→   679→    setSaving(true)
+   680→   680→   680→    try {
+   681→   681→   681→      // The API doesn't validate the current password; we simply update with new
+   682→   682→   682→      await apiPut(`/api/users/${user.id}`, { password: next })
+   683→   683→   683→      setCur(''); setNext(''); setConfirm('')
+   684→   684→   684→      toast.success('Password changed')
+   685→   685→   685→    } catch (e: any) {
+   686→   686→   686→      toast.error(e.message || 'Failed to change password')
+   687→   687→   687→    } finally {
+   688→   688→   688→      setSaving(false)
+   689→   689→   689→    }
+   690→   690→   690→  }
+   691→   691→   691→
+   692→   692→   692→  return (
+   693→   693→   693→    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+   694→   694→   694→      <Card className="border-border/60 shadow-sm">
+   695→   695→   695→        <CardHeader className="pb-3">
+   696→   696→   696→          <CardTitle className="text-base flex items-center gap-2"><KeyRound className="h-4 w-4 text-emerald-600" /> Change Password</CardTitle>
+   697→   697→   697→          <CardDescription className="text-xs">Use at least 4 characters</CardDescription>
+   698→   698→   698→        </CardHeader>
+   699→   699→   699→        <CardContent className="space-y-4 pt-2">
+   700→   700→   700→          <div className="space-y-1.5">
+   701→   701→   701→            <Label htmlFor="s-cur">Current password</Label>
+   702→   702→   702→            <Input id="s-cur" type="password" value={cur} onChange={(e) => setCur(e.target.value)} placeholder="Enter current password" />
+   703→   703→   703→          </div>
+   704→   704→   704→          <div className="space-y-1.5">
+   705→   705→   705→            <Label htmlFor="s-next">New password</Label>
+   706→   706→   706→            <Input id="s-next" type="password" value={next} onChange={(e) => setNext(e.target.value)} placeholder="Enter new password" />
+   707→   707→   707→          </div>
+   708→   708→   708→          <div className="space-y-1.5">
+   709→   709→   709→            <Label htmlFor="s-conf">Confirm new password</Label>
+   710→   710→   710→            <Input id="s-conf" type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="Re-enter new password" />
+   711→   711→   711→          </div>
+   712→   712→   712→          <div className="flex justify-end pt-2 border-t border-border/60">
+   713→   713→   713→            <Button onClick={handleChange} disabled={saving} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2">
+   714→   714→   714→              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />}
+   715→   715→   715→              Update password
+   716→   716→   716→            </Button>
+   717→   717→   717→          </div>
+   718→   718→   718→        </CardContent>
+   719→   719→   719→      </Card>
+   720→   720→   720→
+   721→   721→   721→      <div className="space-y-4">
+   722→   722→   722→        <Card className="border-border/60 shadow-sm">
+   723→   723→   723→          <CardHeader className="pb-3">
+   724→   724→   724→            <CardTitle className="text-base flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-emerald-600" /> Two-Factor Authentication</CardTitle>
+   725→   725→   725→            <CardDescription className="text-xs">Add an extra layer of security</CardDescription>
+   726→   726→   726→          </CardHeader>
+   727→   727→   727→          <CardContent className="pt-2">
+   728→   728→   728→            <div className="flex items-center justify-between rounded-lg border border-border/60 px-4 py-3">
+   729→   729→   729→              <div>
+   730→   730→   730→                <div className="text-sm font-medium text-foreground">Authenticator app</div>
+   731→   731→   731→                <div className="text-xs text-muted-foreground">{twofa ? 'Enabled' : 'Disabled — UI only for this demo'}</div>
+   732→   732→   732→              </div>
+   733→   733→   733→              <Switch checked={twofa} onCheckedChange={setTwofa} />
+   734→   734→   734→            </div>
+   735→   735→   735→          </CardContent>
+   736→   736→   736→        </Card>
+   737→   737→   737→
+   738→   738→   738→        <Card className="border-border/60 shadow-sm">
+   739→   739→   739→          <CardHeader className="pb-3">
+   740→   740→   740→            <CardTitle className="text-base">Session Info</CardTitle>
+   741→   741→   741→            <CardDescription className="text-xs">Current browser session</CardDescription>
+   742→   742→   742→          </CardHeader>
+   743→   743→   743→          <CardContent className="pt-2 space-y-2 text-sm">
+   744→   744→   744→            <Row label="Signed in as" value={user?.name || '—'} />
+   745→   745→   745→            <Row label="Email" value={user?.email || '—'} />
+   746→   746→   746→            <Row label="Role" value={ROLES[user?.role as RoleKey] || '—'} />
+   747→   747→   747→            <Row label="Session" value={<Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 border">Active</Badge>} />
+   748→   748→   748→            <Row label="Cookie" value={<code className="text-xs">ayk_session</code>} />
+   749→   749→   749→          </CardContent>
+   750→   750→   750→        </Card>
+   751→   751→   751→      </div>
+   752→   752→   752→    </div>
+   753→   753→   753→  )
+   754→   754→   754→}
+   755→   755→   755→
+   756→   756→   756→
+   757→   757→   757→

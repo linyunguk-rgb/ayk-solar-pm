@@ -1,19 +1,24 @@
 'use client'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useAppStore } from '@/store/app-store'
 import { useFetch, apiPost } from '@/hooks/use-fetch'
-import { PageHeader } from '@/components/shared/page-header'
+import { SectionHeader, SubSection } from '@/components/shared/section-header'
 import { StatusBadge } from '@/components/shared/status-badge'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { EmptyState, CardSkeleton } from '@/components/shared/empty-state'
+import { Card, CardContent } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Sun, Plus, Trash2, MapPin, Camera, CheckCircle2, ArrowLeft, Loader2, ClipboardList } from 'lucide-react'
-import { SITE_STATUSES, formatNumber } from '@/lib/constants'
+import {
+  Sun, Plus, Trash2, MapPin, Camera, CheckCircle2, ArrowLeft, Loader2,
+  ClipboardList, FolderKanban, Package, FileText, UploadCloud, AlertTriangle,
+} from 'lucide-react'
+import { SITE_STATUSES, formatNumber, formatDate } from '@/lib/constants'
 import { toast } from 'sonner'
+import { cn } from '@/lib/utils'
 
 const EQUIPMENT_OPTIONS = ['Crane', 'Drill Rig', 'Torque Wrench', 'Lift', 'Scaffold', 'Generator', 'Other']
 
@@ -21,6 +26,8 @@ interface PhotoFile {
   name: string
   url: string
 }
+
+const INPUT_CLS = 'h-11'
 
 export function DailyEntryPage() {
   const { setNav } = useAppStore()
@@ -52,6 +59,7 @@ export function DailyEntryPage() {
   const [gpsLocation, setGpsLocation] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
+  const [dragOver, setDragOver] = useState(false)
 
   // Fetch last entry for this project (for prefilling totalInstalled)
   const lastEntryUrl = projectId ? `/api/progress?projectId=${projectId}&limit=1` : null
@@ -81,15 +89,27 @@ export function DailyEntryPage() {
     setTotalEdited(true)
   }
 
-  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || [])
+  const addPhotoFiles = useCallback((files: File[]) => {
     if (!files.length) return
     const newPhotos: PhotoFile[] = files.map(f => ({
       name: f.name,
       url: URL.createObjectURL(f),
     }))
     setPhotos(prev => [...prev, ...newPhotos])
+  }, [])
+
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    addPhotoFiles(files)
     e.target.value = '' // allow re-adding the same file
+  }
+
+  const handleDrop = (e: React.DragEvent<HTMLLabelElement>) => {
+    e.preventDefault()
+    setDragOver(false)
+    const files = Array.from(e.dataTransfer.files || []).filter(f => f.type.startsWith('image/'))
+    if (!files.length) return
+    addPhotoFiles(files)
   }
 
   const removePhoto = (idx: number) => {
@@ -191,11 +211,12 @@ export function DailyEntryPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
-      <PageHeader
+    <div className="space-y-6">
+      <SectionHeader
+        section="dailyEntry"
         title="Daily Progress Entry"
-        description="Submit today's site progress"
-        icon={<Sun className="h-5 w-5" />}
+        description="Submit today's site progress from the field"
+        icon={<Sun className="h-6 w-6" />}
         actions={
           <Button variant="outline" onClick={() => setNav('progress')}>
             <ArrowLeft className="h-4 w-4 mr-1" /> Back to Progress
@@ -205,7 +226,7 @@ export function DailyEntryPage() {
 
       {/* Success banner */}
       {submitted && (
-        <Card className="border-emerald-200 bg-emerald-50">
+        <Card className="border-emerald-200 bg-emerald-50 max-w-2xl mx-auto">
           <CardContent className="p-4 flex items-center gap-3">
             <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
             <div className="flex-1 min-w-0">
@@ -227,301 +248,381 @@ export function DailyEntryPage() {
       )}
 
       {/* Form card */}
-      <Card className="max-w-2xl mx-auto">
-        <CardHeader>
-          <CardTitle className="text-base font-semibold">Site Progress Form</CardTitle>
-          <CardDescription className="text-xs">
-            Site supervisors should submit this form by end of day. All fields marked <span className="text-red-500">*</span> are required.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-5">
-          {/* Project + Date */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <Label className="text-sm font-medium">Project <span className="text-red-500">*</span></Label>
-              <Select value={projectId} onValueChange={setProjectId}>
-                <SelectTrigger className="w-full mt-1">
-                  <SelectValue placeholder="Select project" />
-                </SelectTrigger>
-                <SelectContent>
-                  {projectsLoading ? (
-                    <SelectItem value="_loading" disabled>Loading…</SelectItem>
-                  ) : projects.length === 0 ? (
-                    <SelectItem value="_empty" disabled>No projects available</SelectItem>
-                  ) : (
-                    projects.map(p => (
-                      <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-sm font-medium">Date</Label>
-              <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="mt-1" />
-            </div>
-          </div>
-
-          {/* Installed + Total */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <Label className="text-sm font-medium">Installed Panels Today</Label>
-              <Input
-                type="number"
-                min={0}
-                value={installedPanels}
-                onChange={e => handleInstalledChange(e.target.value)}
-                placeholder="0"
-                className="mt-1"
-              />
-            </div>
-            <div>
-              <Label className="text-sm font-medium">Total Installed Quantity</Label>
-              <Input
-                type="number"
-                min={0}
-                value={totalInstalled}
-                onChange={e => handleTotalChange(e.target.value)}
-                placeholder="0 (running total)"
-                className="mt-1"
-              />
-              {lastEntry ? (
-                <p className="text-[10px] text-muted-foreground mt-1">
-                  Auto-suggested: {formatNumber(Number(lastEntry.totalInstalled) || 0)} (last) + {Number(installedPanels) || 0} (today)
-                </p>
-              ) : (
-                <p className="text-[10px] text-muted-foreground mt-1">No previous entry — enter running total manually</p>
-              )}
-            </div>
-          </div>
-
-          {/* Man-hours + Workers */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <Label className="text-sm font-medium">Man-hours</Label>
-              <Input
-                type="number"
-                step={0.1}
-                min={0}
-                value={manHours}
-                onChange={e => setManHours(e.target.value)}
-                placeholder="0.0"
-                className="mt-1"
-              />
-            </div>
-            <div>
-              <Label className="text-sm font-medium">Number of Workers</Label>
-              <Input
-                type="number"
-                min={0}
-                value={workers}
-                onChange={e => setWorkers(e.target.value)}
-                placeholder="0"
-                className="mt-1"
-              />
-            </div>
-          </div>
-
-          {/* Materials used */}
+      <Card className="max-w-2xl mx-auto border-amber-200/60">
+        <CardContent className="p-4 sm:p-6 space-y-7">
+          {/* Project & Date */}
           <div>
-            <Label className="text-sm font-medium">Materials Used</Label>
-            <div className="mt-1 space-y-2">
-              {materials.map((m, i) => (
-                <div key={i} className="flex gap-2">
+            <SubSection
+              section="dailyEntry"
+              title="Project & Date"
+              description="Which project and which day"
+              icon={<FolderKanban className="h-4 w-4" />}
+            />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <Label className="text-sm font-medium">Project <span className="text-red-500">*</span></Label>
+                <Select value={projectId} onValueChange={setProjectId}>
+                  <SelectTrigger className={cn('w-full mt-1 h-11')}>
+                    <SelectValue placeholder="Select project" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {projectsLoading ? (
+                      <SelectItem value="_loading" disabled>Loading…</SelectItem>
+                    ) : projects.length === 0 ? (
+                      <SelectItem value="_empty" disabled>No projects available</SelectItem>
+                    ) : (
+                      projects.map(p => (
+                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-sm font-medium">Date <span className="text-red-500">*</span></Label>
+                <Input
+                  type="date"
+                  value={date}
+                  onChange={e => setDate(e.target.value)}
+                  className={cn('mt-1', INPUT_CLS)}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Production */}
+          <div>
+            <SubSection
+              section="dailyEntry"
+              title="Production"
+              description="Panels installed and labour"
+              icon={<Sun className="h-4 w-4" />}
+            />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <Label className="text-sm font-medium">Installed Panels Today</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={installedPanels}
+                  onChange={e => handleInstalledChange(e.target.value)}
+                  placeholder="0"
+                  className={cn('mt-1', INPUT_CLS)}
+                />
+              </div>
+              <div>
+                <Label className="text-sm font-medium">Total Installed Quantity</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={totalInstalled}
+                  onChange={e => handleTotalChange(e.target.value)}
+                  placeholder="0 (running total)"
+                  className={cn('mt-1', INPUT_CLS)}
+                />
+                {lastEntry ? (
+                  <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200/60 rounded px-2 py-1 mt-1.5 flex items-center gap-1.5">
+                    <Sun className="h-3 w-3 shrink-0" />
+                    <span>Auto-suggested: <strong className="font-semibold">{formatNumber(Number(lastEntry.totalInstalled) || 0)}</strong> (last) + <strong className="font-semibold">{formatNumber(Number(installedPanels) || 0)}</strong> (today)</span>
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground mt-1">No previous entry — enter running total manually</p>
+                )}
+              </div>
+              <div>
+                <Label className="text-sm font-medium">Man-hours</Label>
+                <Input
+                  type="number"
+                  step={0.1}
+                  min={0}
+                  value={manHours}
+                  onChange={e => setManHours(e.target.value)}
+                  placeholder="0.0"
+                  className={cn('mt-1', INPUT_CLS)}
+                />
+              </div>
+              <div>
+                <Label className="text-sm font-medium">Number of Workers</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={workers}
+                  onChange={e => setWorkers(e.target.value)}
+                  placeholder="0"
+                  className={cn('mt-1', INPUT_CLS)}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Materials & Equipment */}
+          <div>
+            <SubSection
+              section="dailyEntry"
+              title="Materials & Equipment"
+              description="What was used today"
+              icon={<Package className="h-4 w-4" />}
+            />
+            <div className="space-y-3">
+              <div>
+                <Label className="text-sm font-medium">Materials Used</Label>
+                <div className="mt-1 space-y-2">
+                  {materials.map((m, i) => (
+                    <div key={i} className="flex gap-2">
+                      <Input
+                        placeholder="Material name"
+                        value={m.name}
+                        onChange={e => updateMaterial(i, 'name', e.target.value)}
+                        className={cn('flex-1', INPUT_CLS)}
+                      />
+                      <Input
+                        placeholder="Qty"
+                        value={m.qty}
+                        onChange={e => updateMaterial(i, 'qty', e.target.value)}
+                        className={cn('w-24', INPUT_CLS)}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        onClick={() => removeMaterialRow(i)}
+                        disabled={materials.length === 1}
+                        aria-label="Remove material row"
+                        className="h-11 w-11 shrink-0"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+                <Button type="button" variant="outline" size="sm" onClick={addMaterialRow} className="mt-2 border-amber-200 text-amber-700 hover:bg-amber-50">
+                  <Plus className="h-4 w-4 mr-1" /> Add row
+                </Button>
+              </div>
+
+              <div>
+                <Label className="text-sm font-medium">Equipment Used</Label>
+                <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {EQUIPMENT_OPTIONS.map(e => {
+                    const checked = equipment.includes(e)
+                    return (
+                      <label
+                        key={e}
+                        className={cn(
+                          'flex items-center gap-2 text-sm cursor-pointer rounded-md border px-3 py-2.5 hover:bg-amber-50 transition-colors select-none',
+                          checked ? 'border-amber-300 bg-amber-50' : 'border-slate-200'
+                        )}
+                      >
+                        <Checkbox checked={checked} onCheckedChange={() => toggleEquipment(e)} />
+                        <span>{e}</span>
+                      </label>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Work Details */}
+          <div>
+            <SubSection
+              section="dailyEntry"
+              title="Work Details"
+              description="What was done and what's pending"
+              icon={<FileText className="h-4 w-4" />}
+            />
+            <div className="space-y-4">
+              <div>
+                <Label className="text-sm font-medium">Work Completed</Label>
+                <Textarea
+                  value={workCompleted}
+                  onChange={e => setWorkCompleted(e.target.value)}
+                  placeholder="Describe what was done today…"
+                  className="mt-1 min-h-[80px]"
+                />
+              </div>
+              <div>
+                <Label className="text-sm font-medium">Work Pending</Label>
+                <Textarea
+                  value={workPending}
+                  onChange={e => setWorkPending(e.target.value)}
+                  placeholder="Pending tasks for next day…"
+                  className="mt-1 min-h-[80px]"
+                />
+              </div>
+              <div>
+                <Label className="text-sm font-medium">Site Status</Label>
+                <Select value={siteStatus} onValueChange={setSiteStatus}>
+                  <SelectTrigger className={cn('w-full mt-1 h-11')}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SITE_STATUSES.map(s => (
+                      <SelectItem key={s} value={s}>{s}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+
+          {/* Site Info */}
+          <div>
+            <SubSection
+              section="dailyEntry"
+              title="Site Info"
+              description="Remarks, location and photos"
+              icon={<MapPin className="h-4 w-4" />}
+            />
+            <div className="space-y-4">
+              <div>
+                <Label className="text-sm font-medium">Remarks</Label>
+                <Textarea
+                  value={remarks}
+                  onChange={e => setRemarks(e.target.value)}
+                  placeholder="Any additional notes for today…"
+                  className="mt-1 min-h-[60px]"
+                />
+              </div>
+
+              <div>
+                <Label className="text-sm font-medium">GPS / Site Location</Label>
+                <div className="mt-1 flex gap-2">
                   <Input
-                    placeholder="Material name"
-                    value={m.name}
-                    onChange={e => updateMaterial(i, 'name', e.target.value)}
-                    className="flex-1"
-                  />
-                  <Input
-                    placeholder="Qty"
-                    value={m.qty}
-                    onChange={e => updateMaterial(i, 'qty', e.target.value)}
-                    className="w-24"
+                    value={gpsLocation}
+                    onChange={e => setGpsLocation(e.target.value)}
+                    placeholder="lat,lng or site name"
+                    className={cn('flex-1', INPUT_CLS)}
                   />
                   <Button
                     type="button"
                     variant="outline"
-                    size="icon"
-                    onClick={() => removeMaterialRow(i)}
-                    disabled={materials.length === 1}
-                    aria-label="Remove material row"
+                    onClick={getLocation}
+                    className="border-amber-200 text-amber-700 hover:bg-amber-50 hover:text-amber-800 h-11 shrink-0"
                   >
-                    <Trash2 className="h-4 w-4" />
+                    <MapPin className="h-4 w-4 mr-1" /> Get Location
                   </Button>
                 </div>
-              ))}
-            </div>
-            <Button type="button" variant="outline" size="sm" onClick={addMaterialRow} className="mt-2">
-              <Plus className="h-4 w-4 mr-1" /> Add row
-            </Button>
-          </div>
-
-          {/* Equipment used */}
-          <div>
-            <Label className="text-sm font-medium">Equipment Used</Label>
-            <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {EQUIPMENT_OPTIONS.map(e => (
-                <label
-                  key={e}
-                  className="flex items-center gap-2 text-sm cursor-pointer rounded-md border border-slate-200 px-3 py-2 hover:bg-slate-50 transition"
-                >
-                  <Checkbox checked={equipment.includes(e)} onCheckedChange={() => toggleEquipment(e)} />
-                  <span>{e}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          {/* Work completed / pending */}
-          <div>
-            <Label className="text-sm font-medium">Work Completed</Label>
-            <Textarea
-              value={workCompleted}
-              onChange={e => setWorkCompleted(e.target.value)}
-              placeholder="Describe what was done today…"
-              className="mt-1 min-h-[80px]"
-            />
-          </div>
-          <div>
-            <Label className="text-sm font-medium">Work Pending</Label>
-            <Textarea
-              value={workPending}
-              onChange={e => setWorkPending(e.target.value)}
-              placeholder="Pending tasks for next day…"
-              className="mt-1 min-h-[80px]"
-            />
-          </div>
-
-          {/* Site status */}
-          <div>
-            <Label className="text-sm font-medium">Site Status</Label>
-            <Select value={siteStatus} onValueChange={setSiteStatus}>
-              <SelectTrigger className="w-full mt-1">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {SITE_STATUSES.map(s => (
-                  <SelectItem key={s} value={s}>{s}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Remarks */}
-          <div>
-            <Label className="text-sm font-medium">Remarks</Label>
-            <Textarea
-              value={remarks}
-              onChange={e => setRemarks(e.target.value)}
-              placeholder="Any additional notes for today…"
-              className="mt-1 min-h-[60px]"
-            />
-          </div>
-
-          {/* Photos */}
-          <div>
-            <Label className="text-sm font-medium">Photos</Label>
-            <div className="mt-1 flex items-center gap-2 flex-wrap">
-              <label className="inline-flex items-center gap-2 cursor-pointer rounded-md border border-emerald-200 bg-emerald-50 text-emerald-700 px-3 py-2 text-sm hover:bg-emerald-100 transition">
-                <Camera className="h-4 w-4" /> Add Photos
-                <input
-                  type="file"
-                  multiple
-                  accept="image/*"
-                  capture="environment"
-                  className="hidden"
-                  onChange={handlePhotoChange}
-                />
-              </label>
-              {photos.length > 0 && (
-                <span className="text-xs text-muted-foreground">{photos.length} photo(s) selected</span>
-              )}
-            </div>
-            {photos.length > 0 && (
-              <div className="mt-3 grid grid-cols-3 sm:grid-cols-4 gap-2">
-                {photos.map((p, i) => (
-                  <div key={i} className="relative group aspect-square rounded-md overflow-hidden border border-slate-200">
-                    <img src={p.url} alt={p.name} className="w-full h-full object-cover" />
-                    <button
-                      type="button"
-                      onClick={() => removePhoto(i)}
-                      className="absolute top-1 right-1 bg-black/60 text-white rounded p-1 opacity-0 group-hover:opacity-100 transition"
-                      aria-label={`Remove ${p.name}`}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </button>
-                    <p className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[10px] px-1 py-0.5 truncate">
-                      {p.name}
-                    </p>
-                  </div>
-                ))}
+                {gpsLocation && (
+                  <p className="text-[11px] text-muted-foreground mt-1.5 flex items-center gap-1">
+                    <MapPin className="h-3 w-3 text-amber-600" /> Captured: <span className="font-mono">{gpsLocation}</span>
+                  </p>
+                )}
               </div>
-            )}
-          </div>
 
-          {/* GPS Location */}
-          <div>
-            <Label className="text-sm font-medium">GPS / Site Location</Label>
-            <div className="mt-1 flex gap-2">
-              <Input
-                value={gpsLocation}
-                onChange={e => setGpsLocation(e.target.value)}
-                placeholder="lat,lng or site name"
-                className="flex-1"
-              />
-              <Button type="button" variant="outline" onClick={getLocation}>
-                <MapPin className="h-4 w-4 mr-1" /> Get Location
-              </Button>
+              <div>
+                <Label className="text-sm font-medium">Photos</Label>
+                <label
+                  htmlFor="photo-upload"
+                  onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+                  onDragLeave={() => setDragOver(false)}
+                  onDrop={handleDrop}
+                  className={cn(
+                    'mt-1 flex flex-col items-center justify-center text-center cursor-pointer rounded-xl border-2 border-dashed px-4 py-6 transition-colors',
+                    dragOver
+                      ? 'border-amber-400 bg-amber-50'
+                      : 'border-amber-200 bg-amber-50/40 hover:bg-amber-50 hover:border-amber-300'
+                  )}
+                >
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 text-amber-600 mb-2">
+                    <Camera className="h-6 w-6" />
+                  </div>
+                  <div className="text-sm font-medium text-amber-800 flex items-center gap-1.5">
+                    <UploadCloud className="h-4 w-4" /> Tap to take a photo or drag &amp; drop
+                  </div>
+                  <div className="text-[11px] text-muted-foreground mt-0.5">PNG/JPG · On mobile this opens the camera</div>
+                  <input
+                    id="photo-upload"
+                    type="file"
+                    multiple
+                    accept="image/*"
+                    capture="environment"
+                    className="hidden"
+                    onChange={handlePhotoChange}
+                  />
+                </label>
+                {photos.length > 0 && (
+                  <div className="mt-3 grid grid-cols-3 sm:grid-cols-4 gap-2">
+                    {photos.map((p, i) => (
+                      <div key={i} className="relative group aspect-square rounded-md overflow-hidden border border-amber-200 bg-slate-100">
+                        <img src={p.url} alt={p.name} className="w-full h-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => removePhoto(i)}
+                          className="absolute top-1 right-1 bg-black/60 text-white rounded p-1 opacity-0 group-hover:opacity-100 transition"
+                          aria-label={`Remove ${p.name}`}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                        <p className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[10px] px-1 py-0.5 truncate">
+                          {p.name}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {photos.length > 0 && (
+                  <p className="text-[11px] text-muted-foreground mt-2">
+                    {photos.length} photo{photos.length === 1 ? '' : 's'} selected
+                  </p>
+                )}
+              </div>
             </div>
-            {gpsLocation && (
-              <p className="text-[10px] text-muted-foreground mt-1">Captured: {gpsLocation}</p>
-            )}
           </div>
 
           {/* Submit */}
-          <Button
-            onClick={handleSubmit}
-            disabled={submitting || !projectId}
-            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white h-11"
-          >
-            {submitting ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Submitting…
-              </>
-            ) : (
-              <>
-                <CheckCircle2 className="h-4 w-4 mr-2" /> Submit Progress
-              </>
+          <div className="pt-2">
+            <Button
+              onClick={handleSubmit}
+              disabled={submitting || !projectId}
+              className="w-full bg-amber-600 hover:bg-amber-700 text-white h-12 text-base font-semibold gap-2 shadow-sm"
+            >
+              {submitting ? (
+                <>
+                  <Loader2 className="h-5 w-5 animate-spin" /> Submitting…
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="h-5 w-5" /> Submit Progress
+                </>
+              )}
+            </Button>
+            {!projectId && (
+              <p className="text-[11px] text-amber-700 mt-2 flex items-center justify-center gap-1.5">
+                <AlertTriangle className="h-3 w-3" /> Please select a project to enable submit
+              </p>
             )}
-          </Button>
+          </div>
         </CardContent>
       </Card>
 
       {/* Recent submissions */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base font-semibold flex items-center gap-2">
-            <ClipboardList className="h-4 w-4 text-emerald-600" /> Recent Submissions
-          </CardTitle>
-          <CardDescription className="text-xs">Last 5 progress entries across all projects</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {recentLoading ? (
+      <Card className="max-w-2xl mx-auto">
+        <CardContent className="p-4 sm:p-6">
+          <SubSection
+            section="dailyEntry"
+            title="Recent Submissions"
+            description="Last 5 progress entries across all projects"
+            icon={<ClipboardList className="h-4 w-4" />}
+          />
+          {recentLoading && recentEntries.length === 0 ? (
             <div className="space-y-2">
               {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="h-14 bg-slate-100 rounded animate-pulse" />
+                <CardSkeleton key={i} className="h-14 rounded-lg" />
               ))}
             </div>
           ) : recentEntries.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-8">No recent submissions yet</p>
+            <EmptyState
+              icon={<ClipboardList className="h-6 w-6" />}
+              title="No recent submissions yet"
+              description="Once you submit a progress entry, it will show up here."
+            />
           ) : (
-            <div className="space-y-2">
+            <ul className="space-y-2">
               {recentEntries.map((e: any) => (
-                <div
+                <li
                   key={e.id}
-                  className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2.5 hover:bg-slate-50 transition"
+                  className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2.5 hover:bg-amber-50/40 transition-colors"
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -529,7 +630,7 @@ export function DailyEntryPage() {
                       <StatusBadge status={e.siteStatus} />
                     </div>
                     <div className="text-xs text-muted-foreground mt-0.5">
-                      {new Date(e.date).toLocaleDateString('en-SG', { day: '2-digit', month: 'short', year: 'numeric' })}{' '}
+                      {formatDate(e.date)}{' '}
                       • {formatNumber(e.installedPanels || 0)} panels installed
                     </div>
                   </div>
@@ -537,9 +638,9 @@ export function DailyEntryPage() {
                     <div className="truncate max-w-[120px]">{e.submittedBy?.name || '—'}</div>
                     <div className="tabular-nums font-medium text-slate-700">{formatNumber(e.totalInstalled || 0)} total</div>
                   </div>
-                </div>
+                </li>
               ))}
-            </div>
+            </ul>
           )}
         </CardContent>
       </Card>

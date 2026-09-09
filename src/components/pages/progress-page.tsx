@@ -1,10 +1,11 @@
 'use client'
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import { useAppStore } from '@/store/app-store'
 import { useFetch } from '@/hooks/use-fetch'
-import { PageHeader } from '@/components/shared/page-header'
+import { SectionHeader, SubSection } from '@/components/shared/section-header'
 import { StatCard } from '@/components/shared/stat-card'
 import { StatusBadge } from '@/components/shared/status-badge'
+import { EmptyState } from '@/components/shared/empty-state'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
@@ -13,7 +14,10 @@ import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
-import { TrendingUp, Target, Calendar, Plus, AlertTriangle, Gauge, Activity, BarChart3, LineChart } from 'lucide-react'
+import {
+  TrendingUp, Target, Calendar, Plus, AlertTriangle, Gauge, Activity,
+  BarChart3, LineChart, Filter,
+} from 'lucide-react'
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip,
   BarChart, Bar, Legend,
@@ -101,7 +105,18 @@ export function ProgressPage() {
   if (projectsLoading) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Progress Tracking" description="Planned vs Actual progress across projects" icon={<TrendingUp className="h-5 w-5" />} />
+        <SectionHeader
+          section="progress"
+          title="Progress Tracking"
+          description="Planned vs Actual progress across projects"
+          icon={<TrendingUp className="h-6 w-6" />}
+          actions={
+            <Button onClick={() => setNav('daily-entry')} className="bg-indigo-600 hover:bg-indigo-700 text-white">
+              <Plus className="h-4 w-4 mr-1" /> New Entry
+            </Button>
+          }
+        />
+        <SubSection section="progress" title="Overview" icon={<BarChart3 className="h-4 w-4" />} />
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
           {Array.from({ length: 4 }).map((_, i) => (
             <Card key={i} className="animate-pulse"><CardContent className="p-4 h-28" /></Card>
@@ -112,28 +127,30 @@ export function ProgressPage() {
             <Card key={i} className="animate-pulse"><CardContent className="p-4 h-72" /></Card>
           ))}
         </div>
+        <Card className="animate-pulse"><CardContent className="p-4 h-72" /></Card>
       </div>
     )
   }
 
   return (
     <div className="space-y-6">
-      <PageHeader
+      <SectionHeader
+        section="progress"
         title="Progress Tracking"
         description="Planned vs Actual progress across projects"
-        icon={<TrendingUp className="h-5 w-5" />}
+        icon={<TrendingUp className="h-6 w-6" />}
         actions={
-          <Button onClick={() => setNav('daily-entry')} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+          <Button onClick={() => setNav('daily-entry')} className="bg-indigo-600 hover:bg-indigo-700 text-white">
             <Plus className="h-4 w-4 mr-1" /> New Entry
           </Button>
         }
       />
 
       {/* Filter bar */}
-      <Card>
+      <Card className="border-border/60 shadow-sm">
         <CardContent className="p-4">
-          <div className="flex flex-col lg:flex-row lg:items-end gap-3">
-            <div className="flex-1 min-w-[180px]">
+          <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+            <div className="flex-1 min-w-0">
               <Label className="text-xs text-muted-foreground">Project</Label>
               <Select value={selectedProjectId} onValueChange={(v) => setSelectedProjectId(v as any)}>
                 <SelectTrigger className="w-full mt-1">
@@ -147,16 +164,18 @@ export function ProgressPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="min-w-[140px]">
+            <div className="sm:w-[160px] w-full">
               <Label className="text-xs text-muted-foreground">From</Label>
               <Input type="date" value={filterFrom} onChange={e => setFilterFrom(e.target.value)} className="mt-1" />
             </div>
-            <div className="min-w-[140px]">
+            <div className="sm:w-[160px] w-full">
               <Label className="text-xs text-muted-foreground">To</Label>
               <Input type="date" value={filterTo} onChange={e => setFilterTo(e.target.value)} className="mt-1" />
             </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">Granularity</Label>
+            <div className="sm:w-auto w-full">
+              <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                <Filter className="h-3 w-3" /> Granularity
+              </Label>
               <ToggleGroup
                 type="single"
                 value={granularity}
@@ -173,62 +192,80 @@ export function ProgressPage() {
         </CardContent>
       </Card>
 
-      {/* Stat cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-        <StatCard
-          title="Overall Planned"
-          value={`${stats.planned}%`}
-          subtitle="Avg across projects"
-          icon={<Target className="h-5 w-5" />}
-          accent="blue"
+      {/* Overview KPIs */}
+      <div>
+        <SubSection
+          section="progress"
+          title="Overview"
+          description="Aggregated progress across selected projects"
+          icon={<BarChart3 className="h-4 w-4" />}
         />
-        <StatCard
-          title="Overall Actual"
-          value={`${stats.actual}%`}
-          subtitle="Avg across projects"
-          icon={<Gauge className="h-5 w-5" />}
-          accent="green"
-        />
-        <StatCard
-          title="Variance"
-          value={`${stats.variance > 0 ? '+' : ''}${stats.variance}%`}
-          subtitle={stats.variance >= 0 ? 'Ahead of schedule' : 'Behind schedule'}
-          icon={stats.variance >= 0 ? <TrendingUp className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />}
-          accent={stats.variance >= 0 ? 'green' : 'red'}
-        />
-        <StatCard
-          title="Schedule Delay"
-          value={stats.delay > 0 ? `${stats.delay} d` : 'On track'}
-          subtitle={stats.delay > 0 ? 'Days behind plan' : 'No delay detected'}
-          icon={<Calendar className="h-5 w-5" />}
-          accent={stats.delay > 0 ? 'red' : 'green'}
-        />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+          <StatCard
+            title="Overall Planned"
+            value={`${stats.planned}%`}
+            subtitle="Avg across projects"
+            icon={<Target className="h-5 w-5" />}
+            section="progress"
+          />
+          <StatCard
+            title="Overall Actual"
+            value={`${stats.actual}%`}
+            subtitle="Avg across projects"
+            icon={<Gauge className="h-5 w-5" />}
+            section="overview"
+          />
+          <StatCard
+            title="Variance"
+            value={`${stats.variance > 0 ? '+' : ''}${stats.variance}%`}
+            subtitle={stats.variance >= 0 ? 'Ahead of schedule' : 'Behind schedule'}
+            icon={stats.variance >= 0 ? <TrendingUp className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />}
+            section={stats.variance >= 0 ? 'overview' : 'safety'}
+          />
+          <StatCard
+            title="Schedule Delay"
+            value={stats.delay > 0 ? `${stats.delay} d` : 'On track'}
+            subtitle={stats.delay > 0 ? 'Days behind plan' : 'No delay detected'}
+            icon={<Calendar className="h-5 w-5" />}
+            section={stats.delay > 0 ? 'safety' : 'overview'}
+          />
+        </div>
       </div>
 
       {/* Charts: Planned vs Actual bar + S-Curve */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card>
+        <Card className="border-border/60 shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <BarChart3 className="h-4 w-4 text-emerald-600" /> Planned vs Actual
+              <BarChart3 className="h-4 w-4 text-indigo-600" /> Planned vs Actual
             </CardTitle>
             <CardDescription className="text-xs">Progress % by project</CardDescription>
           </CardHeader>
           <CardContent>
             {barData.length === 0 ? (
-              <div className="h-[280px] flex items-center justify-center text-sm text-muted-foreground">No projects available</div>
+              <EmptyState
+                icon={<BarChart3 className="h-5 w-5" />}
+                title="No projects available"
+                description="Create a project to see planned vs actual progress."
+                className="py-16"
+              />
             ) : (
-              <ResponsiveContainer width="100%" height={280}>
-                <BarChart data={barData} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={barData} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
                   <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#64748b' }} interval={0} angle={-15} textAnchor="end" height={60} />
-                  <YAxis tick={{ fontSize: 11, fill: '#64748b' }} domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
+                  <YAxis
+                    tick={{ fontSize: 11, fill: '#64748b' }}
+                    domain={[0, 100]}
+                    tickFormatter={(v) => `${v}%`}
+                    label={{ value: 'Progress %', angle: -90, position: 'insideLeft', style: { fontSize: 11, fill: '#64748b', textAnchor: 'middle' } }}
+                  />
                   <RTooltip
                     contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}
                     formatter={(v: any) => `${v}%`}
                   />
                   <Legend iconType="circle" wrapperStyle={{ fontSize: 11 }} />
-                  <Bar dataKey="planned" fill="#0ea5e9" name="Planned" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="planned" fill="#6366f1" name="Planned" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="actual" fill="#10b981" name="Actual" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -236,23 +273,28 @@ export function ProgressPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="border-border/60 shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <LineChart className="h-4 w-4 text-emerald-600" /> S-Curve — Cumulative Panels
+              <LineChart className="h-4 w-4 text-indigo-600" /> S-Curve — Cumulative Panels
             </CardTitle>
             <CardDescription className="text-xs">Planned vs actual installation over time</CardDescription>
           </CardHeader>
           <CardContent>
             {sCurveData.length === 0 ? (
-              <div className="h-[280px] flex items-center justify-center text-sm text-muted-foreground">No data available</div>
+              <EmptyState
+                icon={<LineChart className="h-5 w-5" />}
+                title="No data available"
+                description="Submit daily progress entries to populate the S-curve."
+                className="py-16"
+              />
             ) : (
-              <ResponsiveContainer width="100%" height={280}>
-                <AreaChart data={sCurveData} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
+              <ResponsiveContainer width="100%" height={300}>
+                <AreaChart data={sCurveData} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
                   <defs>
                     <linearGradient id="gPlanned" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.35} />
-                      <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0} />
+                      <stop offset="5%" stopColor="#6366f1" stopOpacity={0.35} />
+                      <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
                     </linearGradient>
                     <linearGradient id="gActual" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#10b981" stopOpacity={0.4} />
@@ -268,14 +310,18 @@ export function ProgressPage() {
                     }}
                     tick={{ fontSize: 10, fill: '#64748b' }}
                   />
-                  <YAxis tick={{ fontSize: 11, fill: '#64748b' }} tickFormatter={(v) => formatNumber(v)} />
+                  <YAxis
+                    tick={{ fontSize: 11, fill: '#64748b' }}
+                    tickFormatter={(v) => formatNumber(v)}
+                    label={{ value: 'Cumulative panels', angle: -90, position: 'insideLeft', style: { fontSize: 11, fill: '#64748b', textAnchor: 'middle' } }}
+                  />
                   <RTooltip
                     contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}
                     labelFormatter={(l) => formatDate(l as string)}
                     formatter={(v: any, name: any) => [formatNumber(Number(v)), name]}
                   />
                   <Legend iconType="circle" wrapperStyle={{ fontSize: 11 }} />
-                  <Area type="monotone" dataKey="planned" stroke="#0ea5e9" strokeWidth={2} fill="url(#gPlanned)" name="Planned Cumulative" />
+                  <Area type="monotone" dataKey="planned" stroke="#6366f1" strokeWidth={2} fill="url(#gPlanned)" name="Planned Cumulative" />
                   <Area type="monotone" dataKey="actual" stroke="#10b981" strokeWidth={2} fill="url(#gActual)" name="Actual Cumulative" />
                 </AreaChart>
               </ResponsiveContainer>
@@ -285,10 +331,10 @@ export function ProgressPage() {
       </div>
 
       {/* Progress table */}
-      <Card>
+      <Card className="border-border/60 shadow-sm">
         <CardHeader className="pb-3">
           <CardTitle className="text-base font-semibold flex items-center gap-2">
-            <Activity className="h-4 w-4 text-emerald-600" />
+            <Activity className="h-4 w-4 text-indigo-600" />
             {granularity === 'daily' ? 'Daily Progress Entries' : granularity === 'weekly' ? 'Weekly Aggregated Progress' : 'Monthly Aggregated Progress'}
           </CardTitle>
           <CardDescription className="text-xs">{tableData.length} {granularity === 'daily' ? 'entries' : 'groups'} shown</CardDescription>
@@ -301,10 +347,14 @@ export function ProgressPage() {
               ))}
             </div>
           ) : tableData.length === 0 ? (
-            <div className="text-center py-10 text-sm text-muted-foreground">No progress entries found</div>
+            <EmptyState
+              icon={<Activity className="h-5 w-5" />}
+              title="No progress entries found"
+              description="Submit daily progress entries to populate this table."
+            />
           ) : (
             <ScrollArea className="max-h-[500px] ayk-scrollbar">
-              <Table>
+              <Table className="min-w-[800px]">
                 <TableHeader className="sticky top-0 bg-card z-10">
                   <TableRow>
                     <TableHead className="text-xs">Date</TableHead>
@@ -319,13 +369,13 @@ export function ProgressPage() {
                 </TableHeader>
                 <TableBody>
                   {tableData.map((row, i) => (
-                    <TableRow key={i}>
+                    <TableRow key={i} className="hover:bg-slate-50">
                       <TableCell className="text-xs font-medium whitespace-nowrap">{formatDate(row.date)}</TableCell>
                       <TableCell className="text-xs whitespace-nowrap max-w-[160px] truncate" title={row.projectName}>{row.projectName}</TableCell>
-                      <TableCell className="text-xs text-right tabular-nums">{formatNumber(row.installedPanels)}</TableCell>
-                      <TableCell className="text-xs text-right tabular-nums">{formatNumber(row.totalInstalled)}</TableCell>
-                      <TableCell className="text-xs text-right tabular-nums">{row.manHours.toFixed(1)}</TableCell>
-                      <TableCell className="text-xs text-right tabular-nums">{row.workers}</TableCell>
+                      <TableCell className="text-xs text-right tabular-nums">{formatNumber(row.installedPanels ?? 0)}</TableCell>
+                      <TableCell className="text-xs text-right tabular-nums">{formatNumber(row.totalInstalled ?? 0)}</TableCell>
+                      <TableCell className="text-xs text-right tabular-nums">{(row.manHours ?? 0).toFixed(1)}</TableCell>
+                      <TableCell className="text-xs text-right tabular-nums">{row.workers ?? 0}</TableCell>
                       <TableCell><StatusBadge status={row.siteStatus} /></TableCell>
                       <TableCell className="text-xs">{row.submittedBy || '—'}</TableCell>
                     </TableRow>
