@@ -17,11 +17,25 @@ export async function GET() {
   const delayedProjects = projects.filter(p => p.status === 'Delayed').length
   const completedProjects = projects.filter(p => p.status === 'Completed').length
 
-  // overall progress = avg of project overall progress
+  // overall progress = avg of project overall progress — include full fields for ProjectCard
   const projectProgress = projects.map(p => ({
     id: p.id, name: p.name, status: p.status,
+    location: p.location,
+    code: p.code,
+    client: p.client,
+    capacity: p.capacity,
+    totalPanels: p.totalPanels,
+    installedPanels: p.installedPanels,
+    budget: p.budget,
+    actualCost: p.actualCost,
+    startDate: p.startDate,
+    endDate: p.endDate,
+    manager: p.manager,
     overall: calcOverallProgress(p.stages),
     planned: calcPlannedProgress(p.stages),
+    overallProgress: calcOverallProgress(p.stages),
+    plannedProgress: calcPlannedProgress(p.stages),
+    installationPct: p.totalPanels > 0 ? Math.round((p.installedPanels / p.totalPanels) * 1000) / 10 : 0,
   }))
   const overallProgress = projectProgress.length
     ? Math.round(projectProgress.reduce((s, p) => s + p.overall, 0) / projectProgress.length * 10) / 10

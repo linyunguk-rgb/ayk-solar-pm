@@ -54,16 +54,16 @@ export function DashboardPage() {
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
-        <StatCard title="Active Projects" value={s.activeProjects} subtitle={`${s.totalProjects} total · ${s.completedProjects} completed`} icon={<FolderKanban className="h-5 w-5" />} accent="green" />
-        <StatCard title="Overall Progress" value={`${s.overallProgress}%`} subtitle="Across all projects" icon={<TrendingUp className="h-5 w-5" />} accent="blue" />
-        <StatCard title="Delayed Projects" value={s.delayedProjects} subtitle="Need attention" icon={<AlertTriangle className="h-5 w-5" />} accent="red" />
+        <StatCard title="Active Projects" value={s.activeProjects ?? 0} subtitle={`${s.totalProjects ?? 0} total · ${s.completedProjects ?? 0} completed`} icon={<FolderKanban className="h-5 w-5" />} accent="green" />
+        <StatCard title="Overall Progress" value={`${s.overallProgress ?? 0}%`} subtitle="Across all projects" icon={<TrendingUp className="h-5 w-5" />} accent="blue" />
+        <StatCard title="Delayed Projects" value={s.delayedProjects ?? 0} subtitle="Need attention" icon={<AlertTriangle className="h-5 w-5" />} accent="red" />
         <StatCard title="Total Budget" value={formatCurrency(s.totalBudget)} subtitle="All projects" icon={<DollarSign className="h-5 w-5" />} accent="purple" />
         <StatCard title="Budget Used" value={formatCurrency(s.budgetUsed)} subtitle={`${formatCurrency(s.remainingBudget)} remaining`} icon={<Wallet className="h-5 w-5" />} accent="orange" />
-        <StatCard title="Total Workers" value={s.totalWorkers} subtitle={`${s.workersOnSite} on site today`} icon={<Users className="h-5 w-5" />} accent="blue" />
-        <StatCard title="Pending Tasks" value={s.pendingTasks} subtitle={`${s.overdueTasks} overdue`} icon={<ListChecks className="h-5 w-5" />} accent="orange" />
-        <StatCard title="Material Alerts" value={s.lowStockCount} subtitle="Low stock items" icon={<Package className="h-5 w-5" />} accent="red" />
-        <StatCard title="Safety Incidents" value={s.totalIncidents} subtitle={`${s.openIncidents} open · ${s.nearMisses} near miss`} icon={<ShieldAlert className="h-5 w-5" />} accent="orange" />
-        <StatCard title="PPE Compliance" value={`${s.ppeCompliance}%`} subtitle="Average this month" icon={<ShieldAlert className="h-5 w-5" />} accent="green" />
+        <StatCard title="Total Workers" value={s.totalWorkers ?? 0} subtitle={`${s.workersOnSite ?? 0} on site today`} icon={<Users className="h-5 w-5" />} accent="blue" />
+        <StatCard title="Pending Tasks" value={s.pendingTasks ?? 0} subtitle={`${s.overdueTasks ?? 0} overdue`} icon={<ListChecks className="h-5 w-5" />} accent="orange" />
+        <StatCard title="Material Alerts" value={s.lowStockCount ?? 0} subtitle="Low stock items" icon={<Package className="h-5 w-5" />} accent="red" />
+        <StatCard title="Safety Incidents" value={s.totalIncidents ?? 0} subtitle={`${s.openIncidents ?? 0} open · ${s.nearMisses ?? 0} near miss`} icon={<ShieldAlert className="h-5 w-5" />} accent="orange" />
+        <StatCard title="PPE Compliance" value={`${s.ppeCompliance ?? 0}%`} subtitle="Average this month" icon={<ShieldAlert className="h-5 w-5" />} accent="green" />
       </div>
 
       {/* Charts row 1 */}
@@ -75,7 +75,7 @@ export function DashboardPage() {
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={260}>
-              <AreaChart data={charts.installationTrend} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
+              <AreaChart data={(charts?.installationTrend) || []} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
                 <defs>
                   <linearGradient id="gInstalled" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#10b981" stopOpacity={0.4} />
@@ -83,7 +83,7 @@ export function DashboardPage() {
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                <XAxis dataKey="date" tickFormatter={(d) => new Date(d).getDate() + '/' + (new Date(d).getMonth() + 1)} tick={{ fontSize: 11, fill: '#64748b' }} />
+                <XAxis dataKey="date" tickFormatter={(d) => { try { const dt = new Date(d); return isNaN(dt.getTime()) ? '' : dt.getDate() + '/' + (dt.getMonth() + 1) } catch { return '' } }} tick={{ fontSize: 11, fill: '#64748b' }} />
                 <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
                 <RTooltip
                   contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}
@@ -105,10 +105,10 @@ export function DashboardPage() {
               <PieChart>
                 <Pie
                   data={[
-                    { name: 'Active', value: charts.statusDistribution.Active },
-                    { name: 'Completed', value: charts.statusDistribution.Completed },
-                    { name: 'Delayed', value: charts.statusDistribution.Delayed },
-                    { name: 'On Hold', value: charts.statusDistribution.OnHold },
+                    { name: 'Active', value: (charts?.statusDistribution?.Active) ?? 0 },
+                    { name: 'Completed', value: (charts?.statusDistribution?.Completed) ?? 0 },
+                    { name: 'Delayed', value: (charts?.statusDistribution?.Delayed) ?? 0 },
+                    { name: 'On Hold', value: (charts?.statusDistribution?.OnHold) ?? 0 },
                   ]}
                   dataKey="value"
                   nameKey="name"
@@ -137,7 +137,7 @@ export function DashboardPage() {
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={charts.budgetChart} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+              <BarChart data={(charts?.budgetChart) || []} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
                 <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#64748b' }} interval={0} angle={-15} textAnchor="end" height={50} />
                 <YAxis tick={{ fontSize: 11, fill: '#64748b' }} tickFormatter={(v) => formatCurrency(v)} />
@@ -157,9 +157,9 @@ export function DashboardPage() {
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={260}>
-              <LineChart data={charts.manpowerTrend} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
+              <LineChart data={(charts?.manpowerTrend) || []} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                <XAxis dataKey="date" tickFormatter={(d) => new Date(d).getDate() + '/' + (new Date(d).getMonth() + 1)} tick={{ fontSize: 11, fill: '#64748b' }} />
+                <XAxis dataKey="date" tickFormatter={(d) => { try { const dt = new Date(d); return isNaN(dt.getTime()) ? '' : dt.getDate() + '/' + (dt.getMonth() + 1) } catch { return '' } }} tick={{ fontSize: 11, fill: '#64748b' }} />
                 <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
                 <RTooltip contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }} labelFormatter={(l) => formatDate(l as string)} />
                 <Line type="monotone" dataKey="workers" stroke="#0ea5e9" strokeWidth={2.5} dot={{ r: 4, fill: '#0ea5e9' }} name="Workers" />
@@ -205,7 +205,7 @@ export function DashboardPage() {
           </Button>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {data.projects.filter((p: any) => p.status !== 'Completed').slice(0, 6).map((p: any) => (
+          {(data.projects || []).filter((p: any) => p.status !== 'Completed').slice(0, 6).map((p: any) => (
             <ProjectCard key={p.id} project={p} onOpen={() => openProject(p.id)} />
           ))}
         </div>
@@ -215,19 +215,23 @@ export function DashboardPage() {
 }
 
 function ProjectCard({ project, onOpen }: { project: any; onOpen: () => void }) {
-  const pct = project.overall
-  const installPct = project.totalPanels > 0 ? Math.round((project.installedPanels / project.totalPanels) * 1000) / 10 : 0
+  const pct = Number(project.overall ?? 0)
+  const totalPanels = Number(project.totalPanels ?? 0)
+  const installedPanels = Number(project.installedPanels ?? 0)
+  const budget = Number(project.budget ?? 0)
+  const actualCost = Number(project.actualCost ?? 0)
+  const installPct = totalPanels > 0 ? Math.round((installedPanels / totalPanels) * 1000) / 10 : 0
   return (
     <Card className="overflow-hidden hover:shadow-lg transition-shadow cursor-pointer group border-border/60" onClick={onOpen}>
       <CardContent className="p-5">
         <div className="flex items-start justify-between gap-2 mb-3">
           <div className="min-w-0">
-            <h3 className="font-semibold text-slate-900 truncate group-hover:text-emerald-600 transition">{project.name}</h3>
+            <h3 className="font-semibold text-slate-900 truncate group-hover:text-emerald-600 transition">{project.name || 'Untitled'}</h3>
             <div className="flex items-center gap-1 text-xs text-slate-500 mt-0.5">
-              <MapPin className="h-3 w-3" /> {project.location}
+              <MapPin className="h-3 w-3" /> {project.location || '—'}
             </div>
           </div>
-          <StatusBadge status={project.status} />
+          <StatusBadge status={project.status || 'Active'} />
         </div>
 
         <div className="space-y-3">
@@ -242,20 +246,20 @@ function ProjectCard({ project, onOpen }: { project: any; onOpen: () => void }) 
           <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
             <div>
               <div className="text-[10px] text-slate-500 uppercase tracking-wide">Panels</div>
-              <div className="text-sm font-semibold text-slate-900">{formatNumber(project.installedPanels)} / {formatNumber(project.totalPanels)}</div>
+              <div className="text-sm font-semibold text-slate-900">{formatNumber(installedPanels)} / {formatNumber(totalPanels)}</div>
               <Progress value={installPct} className="h-1.5 mt-1" />
             </div>
             <div>
               <div className="text-[10px] text-slate-500 uppercase tracking-wide">Budget</div>
-              <div className="text-sm font-semibold text-slate-900">{formatCurrency(project.actualCost)} / {formatCurrency(project.budget)}</div>
-              <Progress value={project.budget > 0 ? Math.min(100, (project.actualCost / project.budget) * 100) : 0} className="h-1.5 mt-1" />
+              <div className="text-sm font-semibold text-slate-900">{formatCurrency(actualCost)} / {formatCurrency(budget)}</div>
+              <Progress value={budget > 0 ? Math.min(100, (actualCost / budget) * 100) : 0} className="h-1.5 mt-1" />
             </div>
           </div>
 
           <div className="flex items-center justify-between text-xs text-slate-500 pt-2 border-t border-slate-100">
-            <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> {formatDate(project.startDate)}</span>
+            <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> {project.startDate ? formatDate(project.startDate) : '—'}</span>
             <span>→</span>
-            <span className="flex items-center gap-1">{formatDate(project.endDate)}</span>
+            <span className="flex items-center gap-1">{project.endDate ? formatDate(project.endDate) : '—'}</span>
           </div>
         </div>
       </CardContent>

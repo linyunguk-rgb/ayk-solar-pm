@@ -145,30 +145,40 @@ export function canAccess(role: RoleKey, nav: NavKey): boolean {
   return allowed.includes(nav)
 }
 
-export function formatCurrency(n: number): string {
-  if (n >= 1_000_000) return `S$${(n / 1_000_000).toFixed(2)}M`
-  if (n >= 1_000) return `S$${(n / 1_000).toFixed(1)}K`
-  return `S$${n.toFixed(0)}`
+export function formatCurrency(n: number | null | undefined): string {
+  const v = Number(n ?? 0)
+  if (!isFinite(v)) return 'S$0'
+  if (v >= 1_000_000) return `S$${(v / 1_000_000).toFixed(2)}M`
+  if (v >= 1_000) return `S$${(v / 1_000).toFixed(1)}K`
+  return `S$${v.toFixed(0)}`
 }
 
-export function formatNumber(n: number): string {
-  return new Intl.NumberFormat('en-SG').format(n)
+export function formatNumber(n: number | null | undefined): string {
+  const v = Number(n ?? 0)
+  if (!isFinite(v)) return '0'
+  return new Intl.NumberFormat('en-SG').format(v)
 }
 
-export function formatDate(d: Date | string): string {
+export function formatDate(d: Date | string | null | undefined): string {
+  if (!d) return '—'
   const date = typeof d === 'string' ? new Date(d) : d
+  if (!(date instanceof Date) || isNaN(date.getTime())) return '—'
   return date.toLocaleDateString('en-SG', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
-export function formatDateTime(d: Date | string): string {
+export function formatDateTime(d: Date | string | null | undefined): string {
+  if (!d) return '—'
   const date = typeof d === 'string' ? new Date(d) : d
+  if (!(date instanceof Date) || isNaN(date.getTime())) return '—'
   return date.toLocaleDateString('en-SG', { day: '2-digit', month: 'short', year: 'numeric' }) +
     ' ' + date.toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit' })
 }
 
-export function daysBetween(start: Date | string, end: Date | string): number {
+export function daysBetween(start: Date | string | null | undefined, end: Date | string | null | undefined): number {
+  if (!start || !end) return 0
   const s = typeof start === 'string' ? new Date(start) : start
   const e = typeof end === 'string' ? new Date(end) : end
+  if (isNaN(s.getTime()) || isNaN(e.getTime())) return 0
   return Math.ceil((e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24))
 }
 
@@ -178,16 +188,18 @@ export interface StageProgressInput {
   weight: number
 }
 
-export function calcOverallProgress(stages: StageProgressInput[]): number {
-  const totalWeight = stages.reduce((s, st) => s + st.weight, 0)
+export function calcOverallProgress(stages: StageProgressInput[] | null | undefined): number {
+  if (!stages || !Array.isArray(stages) || stages.length === 0) return 0
+  const totalWeight = stages.reduce((s, st) => s + (Number(st.weight) || 0), 0)
   if (totalWeight === 0) return 0
-  const weighted = stages.reduce((s, st) => s + (st.actualPct * st.weight), 0)
+  const weighted = stages.reduce((s, st) => s + ((Number(st.actualPct) || 0) * (Number(st.weight) || 0)), 0)
   return Math.round((weighted / totalWeight) * 10) / 10
 }
 
-export function calcPlannedProgress(stages: { plannedPct: number; weight: number }[]): number {
-  const totalWeight = stages.reduce((s, st) => s + st.weight, 0)
+export function calcPlannedProgress(stages: { plannedPct: number; weight: number }[] | null | undefined): number {
+  if (!stages || !Array.isArray(stages) || stages.length === 0) return 0
+  const totalWeight = stages.reduce((s, st) => s + (Number(st.weight) || 0), 0)
   if (totalWeight === 0) return 0
-  const weighted = stages.reduce((s, st) => s + (st.plannedPct * st.weight), 0)
+  const weighted = stages.reduce((s, st) => s + ((Number(st.plannedPct) || 0) * (Number(st.weight) || 0)), 0)
   return Math.round((weighted / totalWeight) * 10) / 10
 }
