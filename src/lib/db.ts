@@ -4,10 +4,11 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
 }
 
+// Disable query logging to reduce memory/CPU overhead in the constrained sandbox.
 export const db =
   globalForPrisma.prisma ??
   new PrismaClient({
-    log: ['query'],
+    log: [],
   })
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = db
