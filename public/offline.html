@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Offline — AYK Solar</title>
+  <style>
+    html, body { height: 100%; margin: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: linear-gradient(135deg, #0f172a 0%, #064e3b 100%);
+      color: #f1f5f9;
+      display: flex; align-items: center; justify-content: center; text-align: center;
+      padding: 24px;
+    }
+    .card {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 24px;
+      padding: 48px 32px;
+      max-width: 420px;
+      backdrop-filter: blur(8px);
+    }
+    .badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: rgba(16,185,129,0.12); color: #6ee7b7;
+      padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 600;
+      letter-spacing: 0.04em; text-transform: uppercase;
+    }
+    h1 { font-size: 28px; margin: 20px 0 8px; }
+    p { color: #cbd5e1; line-height: 1.6; margin: 0 0 24px; }
+    button {
+      background: linear-gradient(135deg, #10b981, #059669);
+      color: white; border: none; padding: 12px 24px; border-radius: 12px;
+      font-size: 14px; font-weight: 600; cursor: pointer;
+    }
+    button:hover { filter: brightness(1.05); }
+    .footer { margin-top: 32px; font-size: 11px; color: #64748b; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <span class="badge">● AYK Solar</span>
+    <h1>You&apos;re offline</h1>
+    <p>You can still view projects and data you&apos;ve recently opened. New entries will be queued and synced automatically when your connection returns.</p>
+    <button onclick="location.reload()">Try again</button>
+    <div class="footer">© AYK PTE LTD · Solar Energy • Build a Brighter Future</div>
+  </div>
+</body>
+</html>

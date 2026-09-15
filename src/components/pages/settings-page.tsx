@@ -19,10 +19,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogAction, AlertDialogCancel } from '@/components/ui/alert-dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { toast } from 'sonner'
+import Link from 'next/link'
 import {
   Settings, User as UserIcon, Users, Building2, Bell, Lock, Plus,
   Pencil, Trash2, UserPlus, ShieldCheck, Loader2, Save, KeyRound,
   Upload, X, UserCheck, ShieldAlert, History, Package,
+  FileText, Cookie, Scale, AlertTriangle, ExternalLink, Mail,
 } from 'lucide-react'
 import { ROLES, APP_NAME, APP_TAGLINE, NOTIFICATION_TYPES, formatDate, type RoleKey } from '@/lib/constants'
 
@@ -66,7 +68,7 @@ export function SettingsPage() {
       />
       <Tabs defaultValue="profile" className="w-full">
         {/* Tabs: stack vertically on mobile, horizontal row on desktop. Each tab has a small colored icon. */}
-        <TabsList className="grid w-full grid-cols-1 sm:grid-cols-5 h-auto gap-1">
+        <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 lg:grid-cols-6 h-auto gap-1">
           <TabsTrigger value="profile" className="gap-1.5 justify-center py-2.5">
             <UserIcon className="h-4 w-4 text-stone-600" /> Profile
           </TabsTrigger>
@@ -82,12 +84,16 @@ export function SettingsPage() {
           <TabsTrigger value="security" className="gap-1.5 justify-center py-2.5">
             <Lock className="h-4 w-4 text-stone-600" /> Security
           </TabsTrigger>
+          <TabsTrigger value="legal" className="gap-1.5 justify-center py-2.5">
+            <FileText className="h-4 w-4 text-emerald-600" /> Legal
+          </TabsTrigger>
         </TabsList>
         <TabsContent value="profile" className="mt-4"><ProfileTab /></TabsContent>
         <TabsContent value="users" className="mt-4"><UsersTab /></TabsContent>
         <TabsContent value="company" className="mt-4"><CompanyTab /></TabsContent>
         <TabsContent value="notifications" className="mt-4"><NotificationsTab /></TabsContent>
         <TabsContent value="security" className="mt-4"><SecurityTab /></TabsContent>
+        <TabsContent value="legal" className="mt-4"><LegalTab /></TabsContent>
       </Tabs>
     </div>
   )
@@ -840,3 +846,153 @@ function SecurityTab() {
     </div>
   )
 }
+
+// ============================================================
+// Legal tab — links to all legal pages (open in new tab)
+// ============================================================
+const LEGAL_DOCS = [
+  {
+    href: '/legal/terms',
+    title: 'Terms of Service',
+    desc: 'Account registration, multi-tenant access codes, enterprise licensing, IP, data isolation, payment, termination, governing law (Singapore) and dispute resolution.',
+    icon: <FileText className="h-5 w-5" />,
+    accent: 'bg-emerald-100 text-emerald-700',
+  },
+  {
+    href: '/legal/privacy',
+    title: 'Privacy Policy',
+    desc: 'Information collected, how it is used, tenant isolation, sharing, retention, security, cookies, user rights, GDPR & PDPA compliance, children, international transfers.',
+    icon: <ShieldCheck className="h-5 w-5" />,
+    accent: 'bg-sky-100 text-sky-700',
+  },
+  {
+    href: '/legal/cookies',
+    title: 'Cookie Policy',
+    desc: 'Essential, analytics, and preference cookies; local storage usage; managing and disabling cookies; third-party services.',
+    icon: <Cookie className="h-5 w-5" />,
+    accent: 'bg-amber-100 text-amber-700',
+  },
+  {
+    href: '/legal/acceptable-use',
+    title: 'Acceptable Use Policy',
+    desc: 'Permitted uses, prohibited uses (no hacking, no scraping, no abuse), enterprise tenant responsibilities, enforcement and penalties.',
+    icon: <Scale className="h-5 w-5" />,
+    accent: 'bg-rose-100 text-rose-700',
+  },
+  {
+    href: '/legal/disclaimer',
+    title: 'Disclaimer',
+    desc: 'No warranty, accuracy of data, limitation of liability, third-party links, and professional advice disclaimer.',
+    icon: <AlertTriangle className="h-5 w-5" />,
+    accent: 'bg-orange-100 text-orange-700',
+  },
+  {
+    href: '/legal/gdpr',
+    title: 'GDPR / Data Processing Addendum',
+    desc: 'Controller vs processor roles, data subject rights, processing purposes, sub-processors, breach notification, international transfers, and DPA terms for enterprise customers.',
+    icon: <Lock className="h-5 w-5" />,
+    accent: 'bg-violet-100 text-violet-700',
+  },
+]
+
+function LegalTab() {
+  return (
+    <div className="space-y-4">
+      <SubSection
+        section="settings"
+        title="Legal & Compliance"
+        description="Open any document in a new tab to read or print"
+        icon={<FileText className="h-4 w-4" />}
+      />
+
+      <Card className="border-border/60 shadow-sm">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Operating Entity</CardTitle>
+          <CardDescription className="text-xs">Legal entity providing the AYK Solar Project Management System</CardDescription>
+        </CardHeader>
+        <CardContent className="pt-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
+            <div>
+              <div className="text-xs text-muted-foreground">Legal name</div>
+              <div className="font-medium">AYK PTE. LTD.</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">Registered in</div>
+              <div className="font-medium">Singapore</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">Governing law</div>
+              <div className="font-medium">Laws of Singapore</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">Last updated</div>
+              <div className="font-medium">15 September 2025</div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {LEGAL_DOCS.map(doc => (
+          <Link
+            key={doc.href}
+            href={doc.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group flex flex-col rounded-xl border border-border/60 bg-card p-5 shadow-sm hover:shadow-md hover:border-emerald-200 transition-all"
+          >
+            <div className="flex items-start justify-between">
+              <div className={`inline-flex h-10 w-10 items-center justify-center rounded-lg ${doc.accent}`}>
+                {doc.icon}
+              </div>
+              <ExternalLink className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+            </div>
+            <h3 className="mt-3 text-sm font-semibold text-foreground group-hover:text-emerald-700">{doc.title}</h3>
+            <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed flex-1">{doc.desc}</p>
+            <span className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-emerald-700">
+              Open document <ExternalLink className="h-3 w-3" />
+            </span>
+          </Link>
+        ))}
+      </div>
+
+      <Card className="border-border/60 shadow-sm">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Contact</CardTitle>
+          <CardDescription className="text-xs">Reach the right team for legal or privacy questions</CardDescription>
+        </CardHeader>
+        <CardContent className="pt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <a
+            href="mailto:legal@ayk.com.sg"
+            className="flex items-center gap-3 rounded-lg border border-border/60 px-4 py-3 hover:bg-emerald-50 hover:border-emerald-200 transition"
+          >
+            <span className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-emerald-100 text-emerald-700">
+              <Mail className="h-4 w-4" />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm font-medium text-foreground">Legal enquiries</span>
+              <span className="block text-xs text-muted-foreground truncate">legal@ayk.com.sg</span>
+            </span>
+          </a>
+          <a
+            href="mailto:privacy@ayk.com.sg"
+            className="flex items-center gap-3 rounded-lg border border-border/60 px-4 py-3 hover:bg-sky-50 hover:border-sky-200 transition"
+          >
+            <span className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-sky-100 text-sky-700">
+              <ShieldCheck className="h-4 w-4" />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm font-medium text-foreground">Privacy / DPO</span>
+              <span className="block text-xs text-muted-foreground truncate">privacy@ayk.com.sg</span>
+            </span>
+          </a>
+        </CardContent>
+      </Card>
+
+      <p className="text-xs text-muted-foreground text-center">
+        © {new Date().getFullYear()} {APP_NAME}. All rights reserved.
+      </p>
+    </div>
+  )
+}
+

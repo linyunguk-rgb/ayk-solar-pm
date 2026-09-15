@@ -1,0 +1,843 @@
+     1→'use client'
+     2→import { useState, useCallback } from 'react'
+     3→import { useAppStore } from '@/store/app-store'
+     4→import { useFetch, apiPost, apiPut, apiDelete } from '@/hooks/use-fetch'
+     5→import { SectionHeader, SubSection } from '@/components/shared/section-header'
+     6→import { EmptyState, LoadingState } from '@/components/shared/empty-state'
+     7→import { StatCard } from '@/components/shared/stat-card'
+     8→import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+     9→import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+    10→import { Button } from '@/components/ui/button'
+    11→import { Input } from '@/components/ui/input'
+    12→import { Label } from '@/components/ui/label'
+    13→import { Badge } from '@/components/ui/badge'
+    14→import { Switch } from '@/components/ui/switch'
+    15→import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+    16→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+    17→import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table'
+    18→import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription, DialogTrigger } from '@/components/ui/dialog'
+    19→import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogAction, AlertDialogCancel } from '@/components/ui/alert-dialog'
+    20→import { ScrollArea } from '@/components/ui/scroll-area'
+    21→import { toast } from 'sonner'
+    22→import {
+    23→  Settings, User as UserIcon, Users, Building2, Bell, Lock, Plus,
+    24→  Pencil, Trash2, UserPlus, ShieldCheck, Loader2, Save, KeyRound,
+    25→  Upload, X, UserCheck, ShieldAlert, History, Package,
+    26→} from 'lucide-react'
+    27→import { ROLES, APP_NAME, APP_TAGLINE, NOTIFICATION_TYPES, formatDate, type RoleKey } from '@/lib/constants'
+    28→
+    29→// ---------- helpers ----------
+    30→// Role badges color-coded per role (kept from original file).
+    31→const ROLE_BADGE: Record<string, string> = {
+    32→  Admin: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+    33→  ProjectManager: 'bg-sky-100 text-sky-700 border-sky-200',
+    34→  SiteSupervisor: 'bg-violet-100 text-violet-700 border-violet-200',
+    35→  SafetyOfficer: 'bg-red-100 text-red-700 border-red-200',
+    36→  Engineer: 'bg-blue-100 text-blue-700 border-blue-200',
+    37→  StoreOfficer: 'bg-amber-100 text-amber-700 border-amber-200',
+    38→  Worker: 'bg-slate-100 text-slate-700 border-slate-200',
+    39→}
+    40→
+    41→// Section-keyed save button color — settings uses stone-600 per spec.
+    42→const SAVE_BUTTON = 'bg-stone-600 hover:bg-stone-700 text-white gap-2'
+    43→
+    44→interface UserRow {
+    45→  id: string
+    46→  email: string
+    47→  name: string
+    48→  role: string
+    49→  phone?: string | null
+    50→  avatar?: string | null
+    51→  isActive: boolean
+    52→  createdAt: string
+    53→}
+    54→
+    55→// ============================================================
+    56→// Main
+    57→// ============================================================
+    58→export function SettingsPage() {
+    59→  return (
+    60→    <div className="space-y-6">
+    61→      <SectionHeader
+    62→        section="settings"
+    63→        title="Settings"
+    64→        description="Manage your account and system preferences"
+    65→        icon={<Settings className="h-6 w-6" />}
+    66→      />
+    67→      <Tabs defaultValue="profile" className="w-full">
+    68→        {/* Tabs: stack vertically on mobile, horizontal row on desktop. Each tab has a small colored icon. */}
+    69→        <TabsList className="grid w-full grid-cols-1 sm:grid-cols-5 h-auto gap-1">
+    70→          <TabsTrigger value="profile" className="gap-1.5 justify-center py-2.5">
+    71→            <UserIcon className="h-4 w-4 text-stone-600" /> Profile
+    72→          </TabsTrigger>
+    73→          <TabsTrigger value="users" className="gap-1.5 justify-center py-2.5">
+    74→            <Users className="h-4 w-4 text-emerald-600" /> Users
+    75→          </TabsTrigger>
+    76→          <TabsTrigger value="company" className="gap-1.5 justify-center py-2.5">
+    77→            <Building2 className="h-4 w-4 text-stone-600" /> Company
+    78→          </TabsTrigger>
+    79→          <TabsTrigger value="notifications" className="gap-1.5 justify-center py-2.5">
+    80→            <Bell className="h-4 w-4 text-stone-600" /> Alerts
+    81→          </TabsTrigger>
+    82→          <TabsTrigger value="security" className="gap-1.5 justify-center py-2.5">
+    83→            <Lock className="h-4 w-4 text-stone-600" /> Security
+    84→          </TabsTrigger>
+    85→        </TabsList>
+    86→        <TabsContent value="profile" className="mt-4"><ProfileTab /></TabsContent>
+    87→        <TabsContent value="users" className="mt-4"><UsersTab /></TabsContent>
+    88→        <TabsContent value="company" className="mt-4"><CompanyTab /></TabsContent>
+    89→        <TabsContent value="notifications" className="mt-4"><NotificationsTab /></TabsContent>
+    90→        <TabsContent value="security" className="mt-4"><SecurityTab /></TabsContent>
+    91→      </Tabs>
+    92→    </div>
+    93→  )
+    94→}
+    95→
+    96→// ============================================================
+    97→// Profile tab
+    98→// ============================================================
+    99→function ProfileTab() {
+   100→  const { user, setUser } = useAppStore()
+   101→  const [name, setName] = useState(user?.name || '')
+   102→  const [phone, setPhone] = useState(user?.phone || '')
+   103→  const [password, setPassword] = useState('')
+   104→  const [saving, setSaving] = useState(false)
+   105→
+   106→  if (!user) return null
+   107→
+   108→  const handleSave = async () => {
+   109→    if (!user) return
+   110→    setSaving(true)
+   111→    try {
+   112→      const body: any = { name, phone }
+   113→      if (password) body.password = password
+   114→      const res = await apiPut<{ user: UserRow }>(`/api/users/${user.id}`, body)
+   115→      setUser({
+   116→        ...user,
+   117→        name: res.user.name,
+   118→        phone: res.user.phone,
+   119→      })
+   120→      setPassword('')
+   121→      toast.success('Profile updated')
+   122→    } catch (e: any) {
+   123→      toast.error(e.message || 'Failed to update profile')
+   124→    } finally {
+   125→      setSaving(false)
+   126→    }
+   127→  }
+   128→
+   129→  return (
+   130→    <div className="space-y-4">
+   131→      <SubSection
+   132→        section="settings"
+   133→        title="Account"
+   134→        description="Your signed-in identity and contact details"
+   135→        icon={<UserIcon className="h-4 w-4" />}
+   136→      />
+   137→      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+   138→        <Card className="border-border/60 shadow-sm">
+   139→          <CardHeader className="pb-3">
+   140→            <CardTitle className="text-base">Account Overview</CardTitle>
+   141→            <CardDescription className="text-xs">Your signed-in identity</CardDescription>
+   142→          </CardHeader>
+   143→          <CardContent className="flex flex-col items-center text-center gap-3 pt-2">
+   144→            <Avatar className="h-20 w-20">
+   145→              <AvatarFallback className="bg-stone-600 text-white text-2xl font-semibold">
+   146→                {user.name?.[0]?.toUpperCase() || 'U'}
+   147→              </AvatarFallback>
+   148→            </Avatar>
+   149→            <div>
+   150→              <div className="text-base font-semibold text-foreground">{user.name}</div>
+   151→              <div className="text-xs text-muted-foreground">{user.email}</div>
+   152→            </div>
+   153→            <Badge className={`border ${ROLE_BADGE[user.role] || 'bg-slate-100 text-slate-700 border-slate-200'}`}>
+   154→              {ROLES[user.role as RoleKey] || user.role}
+   155→            </Badge>
+   156→            <div className="grid grid-cols-1 gap-2 w-full text-left pt-3 mt-2 border-t border-border/60">
+   157→              <Row label="Phone" value={user.phone || '—'} />
+   158→              <Row label="Member since" value={formatDate(new Date().toISOString())} />
+   159→              <Row label="Status" value={<Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 border">Active</Badge>} />
+   160→            </div>
+   161→          </CardContent>
+   162→        </Card>
+   163→
+   164→        <Card className="lg:col-span-2 border-border/60 shadow-sm">
+   165→          <CardHeader className="pb-3">
+   166→            <CardTitle className="text-base">Edit Profile</CardTitle>
+   167→            <CardDescription className="text-xs">Update your name, contact, or password</CardDescription>
+   168→          </CardHeader>
+   169→          <CardContent className="space-y-4 pt-2">
+   170→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   171→              <div className="space-y-1.5">
+   172→                <Label htmlFor="p-name" className="text-[11px] uppercase tracking-wide text-muted-foreground">Full name</Label>
+   173→                <Input id="p-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" />
+   174→              </div>
+   175→              <div className="space-y-1.5">
+   176→                <Label htmlFor="p-email" className="text-[11px] uppercase tracking-wide text-muted-foreground">Email</Label>
+   177→                <Input id="p-email" value={user.email} disabled className="bg-muted/50" />
+   178→              </div>
+   179→              <div className="space-y-1.5">
+   180→                <Label htmlFor="p-phone" className="text-[11px] uppercase tracking-wide text-muted-foreground">Phone</Label>
+   181→                <Input id="p-phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+65 6XXX XXXX" />
+   182→              </div>
+   183→              <div className="space-y-1.5">
+   184→                <Label htmlFor="p-role" className="text-[11px] uppercase tracking-wide text-muted-foreground">Role</Label>
+   185→                <Input id="p-role" value={ROLES[user.role as RoleKey] || user.role} disabled className="bg-muted/50" />
+   186→              </div>
+   187→              <div className="space-y-1.5 sm:col-span-2">
+   188→                <Label htmlFor="p-pw" className="text-[11px] uppercase tracking-wide text-muted-foreground">New password (optional)</Label>
+   189→                <Input id="p-pw" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Leave blank to keep current" />
+   190→                <p className="text-[11px] text-muted-foreground">Demo accounts use format <code>demo$&lt;plain&gt;</code>.</p>
+   191→              </div>
+   192→            </div>
+   193→            <div className="flex justify-end pt-2 border-t border-border/60">
+   194→              <Button onClick={handleSave} disabled={saving} className={SAVE_BUTTON}>
+   195→                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+   196→                Save changes
+   197→              </Button>
+   198→            </div>
+   199→          </CardContent>
+   200→        </Card>
+   201→      </div>
+   202→    </div>
+   203→  )
+   204→}
+   205→
+   206→function Row({ label, value }: { label: string; value: React.ReactNode }) {
+   207→  return (
+   208→    <div className="flex items-center justify-between gap-3">
+   209→      <span className="text-xs text-muted-foreground">{label}</span>
+   210→      <span className="text-sm font-medium text-foreground text-right truncate">{value}</span>
+   211→    </div>
+   212→  )
+   213→}
+   214→
+   215→// ============================================================
+   216→// Users tab (Admin only)
+   217→// ============================================================
+   218→function UsersTab() {
+   219→  const { user } = useAppStore()
+   220→  const { data, loading, refetch } = useFetch<{ users: UserRow[] }>('/api/users')
+   221→  const [addOpen, setAddOpen] = useState(false)
+   222→  const [editUser, setEditUser] = useState<UserRow | null>(null)
+   223→  const [deleteUser, setDeleteUser] = useState<UserRow | null>(null)
+   224→
+   225→  if (!user) return null
+   226→  if (user.role !== 'Admin') {
+   227→    return (
+   228→      <Card className="border-border/60 shadow-sm">
+   229→        <CardContent className="py-4">
+   230→          <EmptyState
+   231→            icon={<Lock className="h-6 w-6" />}
+   232→            title="Admins only"
+   233→            description="User management is restricted to administrators. Contact your AYK administrator if you need access."
+   234→          />
+   235→        </CardContent>
+   236→      </Card>
+   237→    )
+   238→  }
+   239→
+   240→  const users: UserRow[] = data?.users || []
+   241→  const total = users.length
+   242→  const active = users.filter((u) => u.isActive).length
+   243→  const admins = users.filter((u) => u.role === 'Admin').length
+   244→  const last30 = users.filter((u) => {
+   245→    const d = new Date(u.createdAt)
+   246→    if (isNaN(d.getTime())) return false
+   247→    return (Date.now() - d.getTime()) < 30 * 24 * 60 * 60 * 1000
+   248→  }).length
+   249→
+   250→  return (
+   251→    <div className="space-y-4">
+   252→      <SubSection
+   253→        section="overview"
+   254→        title="User Management"
+   255→        description={`${total} registered user(s) — admin tools`}
+   256→        icon={<Users className="h-4 w-4" />}
+   257→        action={
+   258→          <Dialog open={addOpen} onOpenChange={setAddOpen}>
+   259→            <DialogTrigger asChild>
+   260→              <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 w-full sm:w-auto">
+   261→                <UserPlus className="h-4 w-4" /> Add User
+   262→              </Button>
+   263→            </DialogTrigger>
+   264→            <DialogContent className="w-full sm:max-w-lg max-h-[90vh] overflow-y-auto ayk-scrollbar">
+   265→              <AddUserForm
+   266→                onClose={() => setAddOpen(false)}
+   267→                onCreated={() => { refetch(); setAddOpen(false) }}
+   268→              />
+   269→            </DialogContent>
+   270→          </Dialog>
+   271→        }
+   272→      />
+   273→
+   274→      {/* Stat cards for the users tab — emerald (overview) accent per spec */}
+   275→      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+   276→        <StatCard title="Total Users" value={total} subtitle="All accounts" icon={<Users className="h-5 w-5" />} section="overview" compact />
+   277→        <StatCard title="Active" value={active} subtitle="Currently enabled" icon={<UserCheck className="h-5 w-5" />} section="overview" compact />
+   278→        <StatCard title="Admins" value={admins} subtitle="Full access" icon={<ShieldCheck className="h-5 w-5" />} section="overview" compact />
+   279→        <StatCard title="New (30d)" value={last30} subtitle="Last 30 days" icon={<History className="h-5 w-5" />} section="overview" compact />
+   280→      </div>
+   281→
+   282→      <Card className="border-border/60 shadow-sm">
+   283→        <CardHeader className="pb-3">
+   284→          <CardTitle className="text-base flex items-center gap-2">
+   285→            <Users className="h-4 w-4 text-emerald-600" /> Registered Users
+   286→          </CardTitle>
+   287→          <CardDescription className="text-xs">{users.length} account(s) on file</CardDescription>
+   288→        </CardHeader>
+   289→        <CardContent className="pt-2">
+   290→          {loading ? (
+   291→            <LoadingState label="Loading users…" />
+   292→          ) : users.length === 0 ? (
+   293→            <EmptyState
+   294→              icon={<Users className="h-6 w-6" />}
+   295→              title="No users yet"
+   296→              description="Add your first user to get started."
+   297→            />
+   298→          ) : (
+   299→            <ScrollArea className="max-h-[500px] ayk-scrollbar">
+   300→              <Table>
+   301→                <TableHeader>
+   302→                  <TableRow className="sticky top-0 bg-card z-10">
+   303→                    <TableHead className="min-w-[160px]">Name</TableHead>
+   304→                    <TableHead className="min-w-[200px]">Email</TableHead>
+   305→                    <TableHead className="min-w-[140px]">Role</TableHead>
+   306→                    <TableHead className="min-w-[140px]">Phone</TableHead>
+   307→                    <TableHead className="min-w-[100px]">Status</TableHead>
+   308→                    <TableHead className="min-w-[120px]">Created</TableHead>
+   309→                    <TableHead className="text-right min-w-[120px]">Actions</TableHead>
+   310→                  </TableRow>
+   311→                </TableHeader>
+   312→                <TableBody>
+   313→                  {users.map((u) => (
+   314→                    <TableRow key={u.id} className="hover:bg-slate-50">
+   315→                      <TableCell className="font-medium">{u.name}</TableCell>
+   316→                      <TableCell className="text-muted-foreground text-xs">{u.email}</TableCell>
+   317→                      <TableCell>
+   318→                        <Badge className={`border ${ROLE_BADGE[u.role] || 'bg-slate-100 text-slate-700 border-slate-200'}`}>
+   319→                          {ROLES[u.role as RoleKey] || u.role}
+   320→                        </Badge>
+   321→                      </TableCell>
+   322→                      <TableCell className="text-xs">{u.phone || '—'}</TableCell>
+   323→                      <TableCell>
+   324→                        <Badge className={u.isActive ? 'bg-emerald-100 text-emerald-700 border-emerald-200 border' : 'bg-slate-100 text-slate-500 border-slate-200 border'}>
+   325→                          {u.isActive ? 'Active' : 'Inactive'}
+   326→                        </Badge>
+   327→                      </TableCell>
+   328→                      <TableCell className="text-xs text-muted-foreground">{formatDate(u.createdAt)}</TableCell>
+   329→                      <TableCell className="text-right">
+   330→                        <div className="flex items-center justify-end gap-1">
+   331→                          <Button variant="ghost" size="icon" onClick={() => setEditUser(u)} aria-label="Edit user" title="Edit">
+   332→                            <Pencil className="h-4 w-4" />
+   333→                          </Button>
+   334→                          <Button
+   335→                            variant="ghost"
+   336→                            size="icon"
+   337→                            onClick={() => setDeleteUser(u)}
+   338→                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+   339→                            aria-label="Deactivate user"
+   340→                            title="Deactivate"
+   341→                            disabled={!u.isActive}
+   342→                          >
+   343→                            <Trash2 className="h-4 w-4" />
+   344→                          </Button>
+   345→                        </div>
+   346→                      </TableCell>
+   347→                    </TableRow>
+   348→                  ))}
+   349→                </TableBody>
+   350→              </Table>
+   351→            </ScrollArea>
+   352→          )}
+   353→        </CardContent>
+   354→      </Card>
+   355→
+   356→      {/* Edit dialog */}
+   357→      <Dialog open={!!editUser} onOpenChange={(o) => !o && setEditUser(null)}>
+   358→        <DialogContent className="w-full sm:max-w-lg max-h-[90vh] overflow-y-auto ayk-scrollbar">
+   359→          {editUser && (
+   360→            <EditUserForm
+   361→              user={editUser}
+   362→              onClose={() => setEditUser(null)}
+   363→              onSaved={() => { refetch(); setEditUser(null) }}
+   364→            />
+   365→          )}
+   366→        </DialogContent>
+   367→      </Dialog>
+   368→
+   369→      {/* Deactivate alert */}
+   370→      <AlertDialog open={!!deleteUser} onOpenChange={(o) => !o && setDeleteUser(null)}>
+   371→        <AlertDialogContent>
+   372→          <AlertDialogHeader>
+   373→            <AlertDialogTitle>Deactivate user?</AlertDialogTitle>
+   374→            <AlertDialogDescription>
+   375→              This will mark <strong>{deleteUser?.name}</strong> ({deleteUser?.email}) as inactive. They will no longer be able to log in. This action can be reversed later.
+   376→            </AlertDialogDescription>
+   377→          </AlertDialogHeader>
+   378→          <AlertDialogFooter>
+   379→            <AlertDialogCancel>Cancel</AlertDialogCancel>
+   380→            <AlertDialogAction
+   381→              className="bg-red-600 hover:bg-red-700 text-white"
+   382→              onClick={async (e) => {
+   383→                e.preventDefault()
+   384→                if (!deleteUser) return
+   385→                try {
+   386→                  await apiDelete(`/api/users/${deleteUser.id}`)
+   387→                  toast.success(`${deleteUser.name} deactivated`)
+   388→                  setDeleteUser(null)
+   389→                  refetch()
+   390→                } catch (err: any) {
+   391→                  toast.error(err.message || 'Failed to deactivate user')
+   392→                }
+   393→              }}
+   394→            >
+   395→              Yes, deactivate
+   396→            </AlertDialogAction>
+   397→          </AlertDialogFooter>
+   398→        </AlertDialogContent>
+   399→      </AlertDialog>
+   400→    </div>
+   401→  )
+   402→}
+   403→
+   404→function AddUserForm({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+   405→  const [email, setEmail] = useState('')
+   406→  const [name, setName] = useState('')
+   407→  const [password, setPassword] = useState('')
+   408→  const [role, setRole] = useState<RoleKey>('Worker')
+   409→  const [phone, setPhone] = useState('')
+   410→  const [saving, setSaving] = useState(false)
+   411→
+   412→  const handleSubmit = async () => {
+   413→    if (!email || !name || !password || !role) {
+   414→      toast.error('Email, name, password and role are required')
+   415→      return
+   416→    }
+   417→    setSaving(true)
+   418→    try {
+   419→      await apiPost('/api/users', { email, name, password, role, phone })
+   420→      toast.success('User created')
+   421→      onCreated()
+   422→    } catch (e: any) {
+   423→      toast.error(e.message || 'Failed to create user')
+   424→    } finally {
+   425→      setSaving(false)
+   426→    }
+   427→  }
+   428→
+   429→  return (
+   430→    <>
+   431→      <DialogHeader>
+   432→        <DialogTitle className="flex items-center gap-2"><UserPlus className="h-4 w-4 text-emerald-600" /> Add User</DialogTitle>
+   433→        <DialogDescription>Create a new AYK system account</DialogDescription>
+   434→      </DialogHeader>
+   435→      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-2">
+   436→        <div className="space-y-1.5">
+   437→          <Label htmlFor="add-name" className="text-[11px] uppercase tracking-wide text-muted-foreground">Full name *</Label>
+   438→          <Input id="add-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="John Tan" />
+   439→        </div>
+   440→        <div className="space-y-1.5">
+   441→          <Label htmlFor="add-email" className="text-[11px] uppercase tracking-wide text-muted-foreground">Email *</Label>
+   442→          <Input id="add-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="john@ayk.com.sg" />
+   443→        </div>
+   444→        <div className="space-y-1.5">
+   445→          <Label htmlFor="add-pw" className="text-[11px] uppercase tracking-wide text-muted-foreground">Password *</Label>
+   446→          <Input id="add-pw" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Initial password" />
+   447→        </div>
+   448→        <div className="space-y-1.5">
+   449→          <Label htmlFor="add-phone" className="text-[11px] uppercase tracking-wide text-muted-foreground">Phone</Label>
+   450→          <Input id="add-phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+65 9XXX XXXX" />
+   451→        </div>
+   452→        <div className="space-y-1.5 sm:col-span-2">
+   453→          <Label htmlFor="add-role" className="text-[11px] uppercase tracking-wide text-muted-foreground">Role *</Label>
+   454→          <Select value={role} onValueChange={(v) => setRole(v as RoleKey)}>
+   455→            <SelectTrigger id="add-role" className="w-full"><SelectValue /></SelectTrigger>
+   456→            <SelectContent>
+   457→              {Object.entries(ROLES).map(([k, v]) => (
+   458→                <SelectItem key={k} value={k}>{v}</SelectItem>
+   459→              ))}
+   460→            </SelectContent>
+   461→          </Select>
+   462→        </div>
+   463→      </div>
+   464→      <DialogFooter className="flex-col sm:flex-row gap-2">
+   465→        <Button variant="ghost" onClick={onClose} className="w-full sm:w-auto">Cancel</Button>
+   466→        <Button onClick={handleSubmit} disabled={saving} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 w-full sm:w-auto">
+   467→          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+   468→          Create user
+   469→        </Button>
+   470→      </DialogFooter>
+   471→    </>
+   472→  )
+   473→}
+   474→
+   475→function EditUserForm({ user, onClose, onSaved }: { user: UserRow; onClose: () => void; onSaved: () => void }) {
+   476→  const [name, setName] = useState(user.name)
+   477→  const [role, setRole] = useState<RoleKey>(user.role as RoleKey)
+   478→  const [phone, setPhone] = useState(user.phone || '')
+   479→  const [isActive, setIsActive] = useState(user.isActive)
+   480→  const [password, setPassword] = useState('')
+   481→  const [saving, setSaving] = useState(false)
+   482→
+   483→  const handleSubmit = async () => {
+   484→    setSaving(true)
+   485→    try {
+   486→      const body: any = { name, role, phone, isActive }
+   487→      if (password) body.password = password
+   488→      await apiPut(`/api/users/${user.id}`, body)
+   489→      toast.success('User updated')
+   490→      onSaved()
+   491→    } catch (e: any) {
+   492→      toast.error(e.message || 'Failed to update user')
+   493→    } finally {
+   494→      setSaving(false)
+   495→    }
+   496→  }
+   497→
+   498→  return (
+   499→    <>
+   500→      <DialogHeader>
+   501→        <DialogTitle className="flex items-center gap-2"><Pencil className="h-4 w-4 text-emerald-600" /> Edit User</DialogTitle>
+   502→        <DialogDescription>{user.email}</DialogDescription>
+   503→      </DialogHeader>
+   504→      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-2">
+   505→        <div className="space-y-1.5">
+   506→          <Label htmlFor="ed-name" className="text-[11px] uppercase tracking-wide text-muted-foreground">Full name</Label>
+   507→          <Input id="ed-name" value={name} onChange={(e) => setName(e.target.value)} />
+   508→        </div>
+   509→        <div className="space-y-1.5">
+   510→          <Label htmlFor="ed-phone" className="text-[11px] uppercase tracking-wide text-muted-foreground">Phone</Label>
+   511→          <Input id="ed-phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+65 9XXX XXXX" />
+   512→        </div>
+   513→        <div className="space-y-1.5">
+   514→          <Label htmlFor="ed-role" className="text-[11px] uppercase tracking-wide text-muted-foreground">Role</Label>
+   515→          <Select value={role} onValueChange={(v) => setRole(v as RoleKey)}>
+   516→            <SelectTrigger id="ed-role" className="w-full"><SelectValue /></SelectTrigger>
+   517→            <SelectContent>
+   518→              {Object.entries(ROLES).map(([k, v]) => (
+   519→                <SelectItem key={k} value={k}>{v}</SelectItem>
+   520→              ))}
+   521→            </SelectContent>
+   522→          </Select>
+   523→        </div>
+   524→        <div className="space-y-1.5">
+   525→          <Label htmlFor="ed-pw" className="text-[11px] uppercase tracking-wide text-muted-foreground">New password (optional)</Label>
+   526→          <Input id="ed-pw" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Leave blank to keep" />
+   527→        </div>
+   528→        <div className="flex items-center justify-between rounded-lg border border-border/60 px-3 py-3 sm:col-span-2">
+   529→          <div>
+   530→            <div className="text-sm font-medium">Account active</div>
+   531→            <div className="text-xs text-muted-foreground">Inactive users cannot log in</div>
+   532→          </div>
+   533→          <Switch checked={isActive} onCheckedChange={setIsActive} />
+   534→        </div>
+   535→      </div>
+   536→      <DialogFooter className="flex-col sm:flex-row gap-2">
+   537→        <Button variant="ghost" onClick={onClose} className="w-full sm:w-auto">Cancel</Button>
+   538→        <Button onClick={handleSubmit} disabled={saving} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 w-full sm:w-auto">
+   539→          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+   540→          Save changes
+   541→        </Button>
+   542→      </DialogFooter>
+   543→    </>
+   544→  )
+   545→}
+   546→
+   547→// ============================================================
+   548→// Company tab (local-only)
+   549→// ============================================================
+   550→const COMPANY_LS_KEY = 'ayk-company-settings'
+   551→
+   552→interface CompanySettings {
+   553→  name: string
+   554→  tagline: string
+   555→  address: string
+   556→  uen: string
+   557→  logo: string | null
+   558→}
+   559→
+   560→function loadCompany(): CompanySettings {
+   561→  const defaults: CompanySettings = { name: APP_NAME, tagline: APP_TAGLINE, address: '', uen: '', logo: null }
+   562→  if (typeof window === 'undefined') {
+   563→    return defaults
+   564→  }
+   565→  try {
+   566→    const raw = window.localStorage.getItem(COMPANY_LS_KEY)
+   567→    if (raw) return { ...defaults, ...JSON.parse(raw) }
+   568→  } catch { /* ignore */ }
+   569→  return defaults
+   570→}
+   571→
+   572→function CompanyTab() {
+   573→  const [form, setForm] = useState<CompanySettings>(() => loadCompany())
+   574→  const [saving, setSaving] = useState(false)
+   575→
+   576→  const handleLogo = (file?: File) => {
+   577→    if (!file) return
+   578→    const reader = new FileReader()
+   579→    reader.onload = () => setForm((f) => ({ ...f, logo: String(reader.result) }))
+   580→    reader.readAsDataURL(file)
+   581→  }
+   582→
+   583→  const handleSave = () => {
+   584→    setSaving(true)
+   585→    try {
+   586→      window.localStorage.setItem(COMPANY_LS_KEY, JSON.stringify(form))
+   587→      toast.success('Company settings saved')
+   588→    } catch {
+   589→      toast.error('Failed to save company settings')
+   590→    } finally {
+   591→      setSaving(false)
+   592→    }
+   593→  }
+   594→
+   595→  return (
+   596→    <div className="space-y-4">
+   597→      <SubSection
+   598→        section="settings"
+   599→        title="Company Profile"
+   600→        description="Branding shown on printed reports (stored locally in your browser)"
+   601→        icon={<Building2 className="h-4 w-4" />}
+   602→      />
+   603→      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+   604→        <Card className="border-border/60 shadow-sm">
+   605→          <CardHeader className="pb-3">
+   606→            <CardTitle className="text-base">Logo Preview</CardTitle>
+   607→            <CardDescription className="text-xs">Shows on printed reports</CardDescription>
+   608→          </CardHeader>
+   609→          <CardContent className="flex flex-col items-center gap-3">
+   610→            <div className="h-28 w-28 rounded-xl border-2 border-dashed border-border/60 flex items-center justify-center bg-stone-50/60 overflow-hidden">
+   611→              {form.logo ? (
+   612→                <img src={form.logo} alt="Company logo" className="h-full w-full object-contain" />
+   613→              ) : (
+   614→                <Building2 className="h-10 w-10 text-stone-600" />
+   615→              )}
+   616→            </div>
+   617→            <label className="cursor-pointer">
+   618→              <span className="inline-flex items-center justify-center gap-2 rounded-md border bg-background shadow-xs hover:bg-accent px-3 py-1.5 text-sm font-medium h-9">
+   619→                <Upload className="h-4 w-4" /> Upload
+   620→              </span>
+   621→              <input type="file" accept="image/*" className="hidden" onChange={(e) => handleLogo(e.target.files?.[0])} />
+   622→            </label>
+   623→            {form.logo && (
+   624→              <Button variant="ghost" size="sm" onClick={() => setForm((f) => ({ ...f, logo: null }))} className="text-red-600 hover:text-red-700">
+   625→                <X className="h-3.5 w-3.5 mr-1" /> Remove logo
+   626→              </Button>
+   627→            )}
+   628→          </CardContent>
+   629→        </Card>
+   630→
+   631→        <Card className="lg:col-span-2 border-border/60 shadow-sm">
+   632→          <CardHeader className="pb-3">
+   633→            <CardTitle className="text-base flex items-center gap-2"><Building2 className="h-4 w-4 text-stone-600" /> Company Details</CardTitle>
+   634→            <CardDescription className="text-xs">Stored locally in your browser</CardDescription>
+   635→          </CardHeader>
+   636→          <CardContent className="space-y-4 pt-2">
+   637→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   638→              <div className="space-y-1.5 sm:col-span-2">
+   639→                <Label htmlFor="c-name" className="text-[11px] uppercase tracking-wide text-muted-foreground">Company name</Label>
+   640→                <Input id="c-name" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder={APP_NAME} />
+   641→              </div>
+   642→              <div className="space-y-1.5 sm:col-span-2">
+   643→                <Label htmlFor="c-tag" className="text-[11px] uppercase tracking-wide text-muted-foreground">Tagline</Label>
+   644→                <Input id="c-tag" value={form.tagline} onChange={(e) => setForm((f) => ({ ...f, tagline: e.target.value }))} placeholder={APP_TAGLINE} />
+   645→              </div>
+   646→              <div className="space-y-1.5 sm:col-span-2">
+   647→                <Label htmlFor="c-addr" className="text-[11px] uppercase tracking-wide text-muted-foreground">Address</Label>
+   648→                <Input id="c-addr" value={form.address} onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))} placeholder="20 Ayer Rajah Crescent, Singapore 139964" />
+   649→              </div>
+   650→              <div className="space-y-1.5 sm:col-span-2">
+   651→                <Label htmlFor="c-uen" className="text-[11px] uppercase tracking-wide text-muted-foreground">UEN (Singapore business reg. no.)</Label>
+   652→                <Input id="c-uen" value={form.uen} onChange={(e) => setForm((f) => ({ ...f, uen: e.target.value }))} placeholder="e.g. 201812345K" />
+   653→              </div>
+   654→            </div>
+   655→            <div className="flex justify-end pt-2 border-t border-border/60">
+   656→              <Button onClick={handleSave} disabled={saving} className={SAVE_BUTTON}>
+   657→                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save
+   658→              </Button>
+   659→            </div>
+   660→          </CardContent>
+   661→        </Card>
+   662→      </div>
+   663→    </div>
+   664→  )
+   665→}
+   666→
+   667→// ============================================================
+   668→// Notifications tab (local-only)
+   669→// ============================================================
+   670→const NOTIF_LS_KEY = 'ayk-notification-toggles'
+   671→
+   672→// Per-event icons + descriptions so the user knows what each toggle covers.
+   673→const NOTIF_META: Record<string, { icon: React.ReactNode; desc: string }> = {
+   674→  DelayedProject: { icon: <ShieldAlert className="h-4 w-4" />, desc: 'A project falls behind its planned schedule' },
+   675→  LowStock: { icon: <Package className="h-4 w-4" />, desc: 'Material stock drops below the minimum level' },
+   676→  OverdueTask: { icon: <History className="h-4 w-4" />, desc: 'A task passes its due date without completion' },
+   677→  SafetyIncident: { icon: <ShieldAlert className="h-4 w-4" />, desc: 'An incident, near miss, or unsafe condition is reported' },
+   678→  PendingApproval: { icon: <History className="h-4 w-4" />, desc: 'An expense is awaiting your approval decision' },
+   679→  DailyProgress: { icon: <History className="h-4 w-4" />, desc: 'Daily site progress entries are submitted' },
+   680→}
+   681→
+   682→function loadNotif(): Record<string, boolean> {
+   683→  const defaults: Record<string, boolean> = {
+   684→    DelayedProject: true,
+   685→    LowStock: true,
+   686→    OverdueTask: true,
+   687→    SafetyIncident: true,
+   688→    PendingApproval: false,
+   689→    DailyProgress: true,
+   690→  }
+   691→  if (typeof window === 'undefined') return defaults
+   692→  try {
+   693→    const raw = window.localStorage.getItem(NOTIF_LS_KEY)
+   694→    if (raw) return { ...defaults, ...JSON.parse(raw) }
+   695→  } catch { /* ignore */ }
+   696→  return defaults
+   697→}
+   698→
+   699→function NotificationsTab() {
+   700→  const [toggles, setToggles] = useState<Record<string, boolean>>(() => loadNotif())
+   701→
+   702→  const updateToggle = useCallback((key: string, value: boolean) => {
+   703→    setToggles((prev) => {
+   704→      const next = { ...prev, [key]: value }
+   705→      try { window.localStorage.setItem(NOTIF_LS_KEY, JSON.stringify(next)) } catch { /* ignore */ }
+   706→      toast.success(`${NOTIFICATION_TYPES[key as keyof typeof NOTIFICATION_TYPES] || key} ${value ? 'enabled' : 'disabled'}`)
+   707→      return next
+   708→    })
+   709→  }, [])
+   710→
+   711→  return (
+   712→    <div className="space-y-4">
+   713→      <SubSection
+   714→        section="settings"
+   715→        title="Notification Preferences"
+   716→        description="Choose which alerts you want to receive (stored locally)"
+   717→        icon={<Bell className="h-4 w-4" />}
+   718→      />
+   719→      <Card className="border-border/60 shadow-sm">
+   720→        <CardContent className="pt-2 divide-y divide-border/60">
+   721→          {Object.entries(NOTIFICATION_TYPES).map(([key, label]) => {
+   722→            const meta = NOTIF_META[key] || { icon: <Bell className="h-4 w-4" />, desc: 'Receive a notification when this event occurs' }
+   723→            return (
+   724→              <div key={key} className="flex items-center justify-between py-3 gap-3">
+   725→                <div className="flex items-center gap-3 min-w-0">
+   726→                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-stone-100 text-stone-600">
+   727→                    {meta.icon}
+   728→                  </div>
+   729→                  <div className="min-w-0">
+   730→                    <div className="text-sm font-medium text-foreground truncate">{label}</div>
+   731→                    <div className="text-xs text-muted-foreground truncate">{meta.desc}</div>
+   732→                  </div>
+   733→                </div>
+   734→                <Switch checked={!!toggles[key]} onCheckedChange={(v) => updateToggle(key, v)} />
+   735→              </div>
+   736→            )
+   737→          })}
+   738→        </CardContent>
+   739→      </Card>
+   740→    </div>
+   741→  )
+   742→}
+   743→
+   744→// ============================================================
+   745→// Security tab
+   746→// ============================================================
+   747→function SecurityTab() {
+   748→  const { user } = useAppStore()
+   749→  const [cur, setCur] = useState('')
+   750→  const [next, setNext] = useState('')
+   751→  const [confirm, setConfirm] = useState('')
+   752→  const [twofa, setTwofa] = useState(false)
+   753→  const [saving, setSaving] = useState(false)
+   754→
+   755→  const handleChange = async () => {
+   756→    if (!user) return
+   757→    if (!next || next.length < 4) { toast.error('New password is too short'); return }
+   758→    if (next !== confirm) { toast.error('Passwords do not match'); return }
+   759→    setSaving(true)
+   760→    try {
+   761→      // The API doesn't validate the current password; we simply update with new
+   762→      await apiPut(`/api/users/${user.id}`, { password: next })
+   763→      setCur(''); setNext(''); setConfirm('')
+   764→      toast.success('Password changed')
+   765→    } catch (e: any) {
+   766→      toast.error(e.message || 'Failed to change password')
+   767→    } finally {
+   768→      setSaving(false)
+   769→    }
+   770→  }
+   771→
+   772→  return (
+   773→    <div className="space-y-4">
+   774→      <SubSection
+   775→        section="settings"
+   776→        title="Security"
+   777→        description="Password, two-factor authentication and session info"
+   778→        icon={<Lock className="h-4 w-4" />}
+   779→      />
+   780→      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+   781→        <Card className="border-border/60 shadow-sm">
+   782→          <CardHeader className="pb-3">
+   783→            <CardTitle className="text-base flex items-center gap-2"><KeyRound className="h-4 w-4 text-stone-600" /> Change Password</CardTitle>
+   784→            <CardDescription className="text-xs">Use at least 4 characters</CardDescription>
+   785→          </CardHeader>
+   786→          <CardContent className="space-y-4 pt-2">
+   787→            <div className="space-y-1.5">
+   788→              <Label htmlFor="s-cur" className="text-[11px] uppercase tracking-wide text-muted-foreground">Current password</Label>
+   789→              <Input id="s-cur" type="password" value={cur} onChange={(e) => setCur(e.target.value)} placeholder="Enter current password" />
+   790→            </div>
+   791→            <div className="space-y-1.5">
+   792→              <Label htmlFor="s-next" className="text-[11px] uppercase tracking-wide text-muted-foreground">New password</Label>
+   793→              <Input id="s-next" type="password" value={next} onChange={(e) => setNext(e.target.value)} placeholder="Enter new password" />
+   794→            </div>
+   795→            <div className="space-y-1.5">
+   796→              <Label htmlFor="s-conf" className="text-[11px] uppercase tracking-wide text-muted-foreground">Confirm new password</Label>
+   797→              <Input id="s-conf" type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="Re-enter new password" />
+   798→            </div>
+   799→            <div className="flex justify-end pt-2 border-t border-border/60">
+   800→              <Button onClick={handleChange} disabled={saving} className={SAVE_BUTTON}>
+   801→                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />}
+   802→                Update password
+   803→              </Button>
+   804→            </div>
+   805→          </CardContent>
+   806→        </Card>
+   807→
+   808→        <div className="space-y-4">
+   809→          <Card className="border-border/60 shadow-sm">
+   810→            <CardHeader className="pb-3">
+   811→              <CardTitle className="text-base flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-stone-600" /> Two-Factor Authentication</CardTitle>
+   812→              <CardDescription className="text-xs">Add an extra layer of security</CardDescription>
+   813→            </CardHeader>
+   814→            <CardContent className="pt-2">
+   815→              <div className="flex items-center justify-between rounded-lg border border-border/60 px-4 py-3">
+   816→                <div>
+   817→                  <div className="text-sm font-medium text-foreground">Authenticator app</div>
+   818→                  <div className="text-xs text-muted-foreground">{twofa ? 'Enabled' : 'Disabled — UI only for this demo'}</div>
+   819→                </div>
+   820→                <Switch checked={twofa} onCheckedChange={setTwofa} />
+   821→              </div>
+   822→            </CardContent>
+   823→          </Card>
+   824→
+   825→          <Card className="border-border/60 shadow-sm">
+   826→            <CardHeader className="pb-3">
+   827→              <CardTitle className="text-base">Session Info</CardTitle>
+   828→              <CardDescription className="text-xs">Current browser session</CardDescription>
+   829→            </CardHeader>
+   830→            <CardContent className="pt-2 space-y-2 text-sm">
+   831→              <Row label="Signed in as" value={user?.name || '—'} />
+   832→              <Row label="Email" value={user?.email || '—'} />
+   833→              <Row label="Role" value={ROLES[user?.role as RoleKey] || '—'} />
+   834→              <Row label="Session" value={<Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 border">Active</Badge>} />
+   835→              <Row label="Cookie" value={<code className="text-xs">ayk_session</code>} />
+   836→            </CardContent>
+   837→          </Card>
+   838→        </div>
+   839→      </div>
+   840→    </div>
+   841→  )
+   842→}
+   843→

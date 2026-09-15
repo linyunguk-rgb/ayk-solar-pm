@@ -872,3 +872,186 @@ Stage Summary:
 - Mobile: 2-column KPI grids, stacked filter bars, full-width dialogs, horizontal-scroll tables, touch-friendly inputs.
 - Desktop: 4-column KPI grids, side-by-side charts, grouped metric categories.
 - Lint clean, server stable at 2.2GB free memory.
+
+---
+Task ID: PROD-2
+Agent: Error Handling + Security
+Task: Production error handling, 404 page, security headers, deployment config
+
+Work Log:
+- Read worklog.md (874 lines) for architecture context: single `/` route, Zustand `currentNav`, emerald/slate branding, shadcn/ui + lucide + recharts.
+- Found pre-existing scaffolding from a previous agent: `src/components/legal/legal-shell.tsx` (Client TOC sidebar component), `src/app/legal/layout.tsx`, `src/app/legal/page.tsx` (index). The 6 legal subdirectories (`terms`, `privacy`, `cookies`, `acceptable-use`, `disclaimer`, `gdpr`) existed but had no `page.tsx` files — filled them all in.
+- Created `src/app/error.tsx` ('use client') — App Router error boundary. Logs to console.error (would forward to Sentry/Datadog in real prod). Friendly amber "Something went wrong" card with Try again / Dashboard / Reload actions. Shows `error.digest` in prod, full message in dev.
+- Created `src/app/global-error.tsx` ('use client') — root error boundary catching errors in root layout. Renders own `<html>`/`<body>` with inline styles (no Tailwind, no shared fonts) since layout may have crashed. Single "Try again" button.
+- Created `src/app/not-found.tsx` (Server Component) — custom 404 with AYK branding, animated sun illustration (12 amber satellite dots + emerald core), big "404", "Page not found" message, primary "Go to Home" emerald button (h-11), secondary "Go to Legal" outline button, plus inline Terms/Privacy links. Sticky footer.
+- Created `src/app/loading.tsx` (Server Component) — global route-transition loading UI: emerald spinner ring around emerald sun core, "Loading AYK Solar…" text.
+- Created `src/lib/env.ts` — typed, centralized env accessor: `appUrl`, `isProduction`, `isDevelopment`, `isTest`, `databaseUrl`, `nextAuthUrl`, `nextAuthSecret`, `smtp*` fields with sensible defaults. `assertProductionEnv()` helper that throws if required prod vars missing.
+- Created `src/app/sitemap.ts` (Server Component) — emits 8 URLs: `/`, `/legal`, `/legal/{terms,privacy,cookies,acceptable-use,disclaimer,gdpr}`. Uses `env.appUrl` for absolute URLs.
+- Created 6 legal pages as Server Components rendering the existing `<LegalShell>` (Client) with full TOC + prose content:
+  * `src/app/legal/terms/page.tsx` — 11 sections (Acceptance, Description, Accounts, Acceptable Use, Data, IP, Availability, Limitation of Liability, Changes, Governing Law, Contact)
+  * `src/app/legal/privacy/page.tsx` — 13 sections covering PDPA + GDPR compliance (Overview, Data Collected, Use of Data, Legal Basis, Sharing, Retention, Security, Rights, Cookies, International Transfers, Children, Changes, Contact)
+  * `src/app/legal/cookies/page.tsx` — explains `ayk_session` cookie (HttpOnly, Secure, SameSite=Lax), localStorage prefs, analytics, third-party content, managing cookies
+  * `src/app/legal/acceptable-use/page.tsx` — permitted/prohibited use, no-resale, monitoring, penalties, reporting
+  * `src/app/legal/disclaimer/page.tsx` — no warranty, accuracy, professional advice, third-party links, limitation of liability, indemnity
+  * `src/app/legal/gdpr/page.tsx` — full Data Processing Addendum (scope, roles, categories, processing, obligations, sub-processors, transfers, data subject rights, breach notification, deletion, audit, contact)
+- Updated `next.config.ts`:
+  * Kept existing `output: "standalone"`, `typescript.ignoreBuildErrors: true`, `reactStrictMode: false`, `allowedDevOrigins`
+  * Added `compress: true` (gzip/brotli)
+  * Added `poweredByHeader: false` (don't leak Next.js version)
+  * Added `headers()` returning two source-matchers:
+    - `/(.*)` applies 10 security headers: X-Frame-Options: DENY, X-Content-Type-Options: nosniff, Referrer-Policy: strict-origin-when-cross-origin, Permissions-Policy (camera/geolocation self, microphone/payment/usb off), X-DNS-Prefetch-Control: on, Strict-Transport-Security (2yr + includeSubDomains + preload), Content-Security-Policy (default-src 'self' with 'unsafe-inline'/'unsafe-eval' needed for Next.js + Radix), Cross-Origin-Opener-Policy: same-origin, Cross-Origin-Resource-Policy: same-origin
+    - `/api/(.*)` re-asserts X-Content-Type-Options: nosniff on JSON responses
+- Updated `public/robots.txt` — explicit User-agent blocks (Googlebot, Bingbot, catch-all `*`), `Allow: /`, `Disallow: /api/`, `Allow: /legal/`, `Sitemap: /sitemap.xml`.
+- Created `.env.example` — documents DATABASE_URL (SQLite default + PostgreSQL example), NEXT_PUBLIC_APP_URL, NEXTAUTH_URL, NEXTAUTH_SECRET (with `openssl rand -base64 32` hint), commented-out SMTP vars.
+- Audited responsive issues across `src/components/pages/*.tsx`:
+  * Tables: `src/components/ui/table.tsx` already has `overflow-x-auto` — all tables scroll horizontally on mobile. ✓
+  * Dialog widths: 9 of 13 dialogs already used `w-full sm:max-w-lg max-h-[90vh] overflow-y-auto ayk-scrollbar`. Found 4 dialogs lacking the `max-h-[90vh] overflow-y-auto` part — added it to:
+    - `expenses-page.tsx` — Add/Edit Expense dialog
+    - `materials-page.tsx` — Add/Edit Material dialog
+    - `materials-page.tsx` — Material Transaction dialog
+    - `documents-page.tsx` — Preview dialog (was `max-w-3xl` only; now `w-full max-w-3xl max-h-[90vh] overflow-y-auto ayk-scrollbar`)
+  * Filter bars: grepped all `flex ... flex-row` patterns — every filter bar uses `flex flex-col sm:flex-row`, stacks vertically on mobile. ✓
+  * Button heights: shadcn default `h-9` (36px) for normal buttons, `h-11` (44px) for primary CTAs (login). Touch targets meet WCAG where it matters most. ✓
+  * Text sizes: body `text-sm` (14px), labels `text-xs` (12px) — meets spec minimums. ✓
+  * No functionality changed; only responsive polish on the 4 dialogs.
+- Ran `bun run lint` — initial pass had 2 warnings on `error.tsx` + `global-error.tsx` ("Unused eslint-disable directive" because the project's eslint config already has `no-console: off`). Removed the directives; re-ran lint. Final: 0 errors, 2 warnings — both on `public/sw.js` (service worker file added by another agent's PWA setup, not touched here). All 20 files I created/modified are lint-clean.
+- Verified via curl that all routes work: `/` (200, 44 KB), `/legal` (200), `/legal/terms` (200), `/legal/privacy` (200), `/legal/cookies` (200), `/legal/acceptable-use` (200), `/legal/disclaimer` (200), `/legal/gdpr` (200), `/sitemap.xml` (200, 1380 bytes valid XML), `/robots.txt` (200, correct content), `/some-missing-page` (404, custom not-found rendered), `/api/auth/me` (200 with all security headers present).
+- Verified security headers via `curl -I` on HTML and API routes: all 10 security headers present on both, `X-Powered-By` correctly suppressed.
+- Dev server log shows clean compile, no errors.
+
+Stage Summary:
+- Files created (15):
+  * `src/app/error.tsx` — Client Component error boundary
+  * `src/app/global-error.tsx` — Client Component root error boundary
+  * `src/app/not-found.tsx` — Server Component custom 404
+  * `src/app/loading.tsx` — Server Component global loading UI
+  * `src/app/sitemap.ts` — Server Component sitemap generator
+  * `src/lib/env.ts` — typed environment variable accessor
+  * `src/app/legal/terms/page.tsx` — Server Component Terms of Service
+  * `src/app/legal/privacy/page.tsx` — Server Component Privacy Policy
+  * `src/app/legal/cookies/page.tsx` — Server Component Cookie Policy
+  * `src/app/legal/acceptable-use/page.tsx` — Server Component Acceptable Use Policy
+  * `src/app/legal/disclaimer/page.tsx` — Server Component Disclaimer
+  * `src/app/legal/gdpr/page.tsx` — Server Component GDPR / DPA
+  * `.env.example` — example environment file
+  * `agent-ctx/PROD-2-error-handling-security.md` — this agent's work record
+- Files modified (5):
+  * `next.config.ts` — added security headers (10 of them), `compress: true`, `poweredByHeader: false`
+  * `public/robots.txt` — rewrote with explicit crawler rules + sitemap reference
+  * `src/components/pages/expenses-page.tsx` — added `max-h-[90vh] overflow-y-auto ayk-scrollbar` to Add/Edit Expense dialog (mobile responsive fix)
+  * `src/components/pages/materials-page.tsx` — added `max-h-[90vh] overflow-y-auto ayk-scrollbar` to Material + Transaction dialogs (mobile responsive fix)
+  * `src/components/pages/documents-page.tsx` — added `w-full max-h-[90vh] overflow-y-auto ayk-scrollbar` to Preview dialog (mobile responsive fix)
+- Decisions:
+  * Legal pages exist as Server Components: task says "Legal/sitemap pages are Server Components" and not-found links to `/legal`. Found pre-existing scaffolding (`LegalShell` client + `legal/layout.tsx` + `legal/page.tsx` index) but the six legal documents themselves were missing — filled them all in so the index page's links don't 404.
+  * CSP allows `'unsafe-inline'` and `'unsafe-eval'`: Next.js dev mode + Radix UI inline styles require these. A fully locked-down prod build would use nonces/hashes; future hardening step.
+  * `assertProductionEnv()` is opt-in: doesn't auto-run on import to avoid breaking the dev sandbox. Documented in `env.ts` for explicit call from a server entry point if desired.
+  * `sitemap.xml` uses `env.appUrl` so absolute URLs are correct in any deployment (localhost, staging, prod domain).
+  * Robots.txt `Sitemap:` directive is relative (`/sitemap.xml`) per the task spec. Search engines resolve it against the host root.
+  * No changes to existing functionality — only added new files and made 4 dialogs scrollable on mobile.
+- Lint: 0 errors, 2 warnings (both in `public/sw.js`, a file owned by another agent's PWA setup — not modified here). All 20 files created/modified by this agent pass lint cleanly.
+
+---
+Task ID: PROD-1
+Agent: Legal + PWA Setup
+Task: Create legal pages, PWA manifest, service worker for offline support
+
+Work Log:
+- Read worklog.md to understand AYK foundation (Next.js 16 App Router, Zustand `currentNav` view-switching, emerald/slate branding, shadcn/ui, demo auth via `ayk_session` cookie, /api/* routes). Confirmed `/legal/*` is the only non-`/` user-visible route family allowed by the spec.
+- Created `/src/app/legal/` route family as Server Components (`layout.tsx` + 7 page.tsx files) so they can be statically crawled, printed, and indexed independently of the client-side app shell.
+- Built a shared `LegalShell` client component at `/src/components/legal/legal-shell.tsx` that renders the consistent header (AYK brand + Back + Print + mobile TOC toggle), the page-title block with "Last updated", the desktop sidebar TOC (sticky, scroll-margin-top so anchor jumps land below the sticky header), the mobile TOC drawer, the prose article body, a CTA card with `legal@ayk.com.sg`, and a copyright footer. Each legal page passes its own TOC array + JSX children to `LegalShell`.
+- Added `.legal-prose` typography CSS to `/src/app/globals.css` (slate-800 prose, emerald accent links, h2/h3 with scroll-margin-top + border-top rule, blockquote, lists, print styles). This keeps legal content readable without pulling in `@tailwindcss/typography`.
+- `/src/app/legal/layout.tsx` is a thin Server Component layout that sets Metadata (title, description, robots index/follow) and wraps children in a slate-50 min-h-screen container.
+- `/src/app/legal/page.tsx` — landing page with branded slate→emerald gradient hero (AYK logo, tagline, last-updated), 6-card grid (Terms, Privacy, Cookies, Acceptable Use, Disclaimer, GDPR/DPA) each with icon + title + short desc + Read-more link, contact cards for legal@ and privacy@, operating-entity block (AYK PTE. LTD., Singapore, governing law, PDPA+GDPR), and a footer with quick links + back-to-app.
+- `/src/app/legal/terms/page.tsx` — Terms of Service with 14 sections: introduction/acceptance, definitions (AYK, Platform, Service, User, Tenant, Enterprise, Access Code, Tenant Data, Personal Data), account registration & responsibilities, multi-tenant access codes & enterprise licensing (trial vs paid), acceptable use (cross-ref AUP), IP rights (AYK owns platform; User owns Tenant Data; AYK gets hosting licence), data isolation & security responsibilities, payment terms (SGD, GST, 30-day, 1.5%/mo interest, refunds), termination (by user / by Enterprise admin / by AYK; 90-day export window), disclaimers & limitation of liability (12-month fee cap), governing law (Singapore), dispute resolution (negotiation → SMC mediation → SIAC arbitration), changes, contact.
+- `/src/app/legal/privacy/page.tsx` — Privacy Policy with 14 sections: information collected (account, project & site, media & GPS opt-in, usage/technical, enterprise/billing), how data is used, data isolation, data sharing (never sold, sub-processors, legal, business transfers), retention & deletion (12-month inactivity, 90-day export, 12-month audit logs, legal holds), security measures (bcrypt, HttpOnly Secure cookies, TLS, tenant isolation, RBAC, encrypted backups, CVE scanning), cookies (cross-ref), user rights (access/correction/deletion/export/restriction/withdraw/lodge complaint), GDPR compliance (Art. 6(1) bases), PDPA compliance, children (18+ only), international transfers (SCCs / UK Addendum / PDPC mechanisms), changes, contact (privacy@ayk.com.sg).
+- `/src/app/legal/cookies/page.tsx` — Cookie Policy: what cookies are, essential cookies (ayk_session signed HttpOnly Secure, csrf_token), analytics (first-party, opt-in for individual tracking), local storage (theme, sidebar, recent project, SW flag), managing/disabling (Chrome/Firefox/Safari/Edge instructions), third-party services (no advertising pixels; sub-processor list cross-ref DPA), changes, contact.
+- `/src/app/legal/acceptable-use/page.tsx` — Acceptable Use Policy: permitted uses, prohibited uses (unauthorised access & security violations, abuse, harmful content, reverse engineering, misrepresentation), enterprise tenant responsibilities (provision responsibly, least privilege, prompt revocation, notify AYK, own backups, licence limits, pay fees), enforcement & penalties (warning / content removal / suspension / termination / forfeit / referral), reporting violations, contact.
+- `/src/app/legal/disclaimer/page.tsx` — Disclaimer: no warranty, accuracy of data (daily progress, GPS, photos, financials, compliance % are User-entered), limitation of liability (12-month fee cap), third-party links, professional advice disclaimer (not engineering / safety / legal / financial advice), service availability, contact.
+- `/src/app/legal/gdpr/page.tsx` — GDPR / Data Processing Addendum: scope, controller vs processor (incl. AYK as independent controller for its own purposes), processing purposes, data subject rights (assistance + forwarding), sub-processors (general authorisation + 30-day notice + equivalent terms + AYK liable), breach notification (72-hour, contents of notice), international transfers (SCCs / UK IDTA / PDPC mechanisms), security measures, deletion & return (90-day export + 30-day backup purge), audit rights (annual + SOC2/ISO27001 accepted), DPA terms for enterprise customers (uptime, residency, retention, sub-processor restrictions, breach timelines, insurance), contact (DPO).
+- PWA setup:
+  - `/public/manifest.json` — full PWA manifest: name `AYK Solar Project Management`, short_name `AYK Solar`, start_url `/`, scope `/`, display standalone + minimal-ui fallback, portrait orientation, background #0f172a, theme #10b981, lang en, dir ltr, categories business/productivity/utilities, 4 icon entries (192 + 512, each any + maskable), 2 shortcuts (Dashboard + Daily Entry with `?nav=` query), `prefer_related_applications: false`. Valid for Play Store TWA packaging.
+  - `/public/sw.js` — service worker with cache versioning (`v1.0.0`), 3 caches (static / runtime / images), install precaches app shell (/, /manifest.json, /logo.svg, /icons/icon.svg, /offline.html) then `skipWaiting()`, activate purges old caches + `clients.claim()`, fetch routing: navigations = network-first → cached shell → offline fallback; API GET = network-first → cache; images = cache-first with background revalidation + LRU trim (60 max); other static assets = stale-while-revalidate; non-GET API mutations = try network, on failure queue for background sync + return synthetic 202. Listens for `sync` event (`ayk-replay-queue` tag) to replay queued mutations and posts `AYK_QUEUE_FLUSHED` to clients. Listens for `AYK_SKIP_WAITING` message to force update.
+  - `/public/offline.html` — branded offline fallback page (slate→emerald gradient, "You're offline" message, Try again button, AYK footer).
+  - `/public/icons/icon.svg` — canonical 512×512 source icon: sun + solar panel on emerald→slate gradient with rounded corners, maskable-safe (content within inner 80%).
+  - Generated PNG icons via Python `cairosvg`: `icon-192.png` (192×192), `icon-512.png` (512×512), `apple-touch-icon.png` (180×180), `favicon-32.png`, `favicon-16.png`. All PNGs are real raster images, not placeholders.
+  - `/public/icons/README.md` — documents the source SVG, the generated PNGs, the regeneration command (cairosvg one-liner), and Play Store TWA requirements (512×512 store icon, adaptive-icon foreground/background drawables).
+  - `/src/components/pwa/register-sw.tsx` — client component that registers `/sw.js` only in production (skips in dev to avoid HMR interference), only if `serviceWorker` is supported, listens for `updatefound` + `statechange` to trigger `skipWaiting` + auto-reload on `controllerchange`. Renders nothing.
+  - Updated `/src/app/layout.tsx` to: import `RegisterSW`; add `manifest: "/manifest.json"` to metadata; expand `icons` to include 16/32 PNG favicons, the SVG, and the 180×180 Apple touch icon; add `appleWebApp` (capable, title `AYK Solar`, statusBarStyle `black-translucent`); add `formatDetection` (no telephone/email/address auto-detection); add a `Viewport` export with `themeColor: "#10b981"`, `width: device-width`, `maximumScale: 5`, `viewportFit: "cover"`; add explicit `<meta name="mobile-web-app-capable">`, `apple-mobile-web-app-capable`, `apple-mobile-web-app-status-bar-style`, `apple-mobile-web-app-title`, `application-name`, `msapplication-TileColor`, `msapplication-tap-highlight` tags in `<head>`; render `<RegisterSW />` at the bottom of `<body>`.
+- Footer legal links:
+  - `/src/components/login/landing-page.tsx` — NEW marketing landing page (`LandingPage` client component). Hero (slate→emerald gradient, tagline badge, "Solar construction, built to run like clockwork" headline, Sign-in CTA + Read-the-policies CTA, 4 stat tiles), Features grid (6 cards: dashboards, manpower & tasks, materials & expenses, safety, notifications, PWA), emerald CTA section, and a 3-column footer (brand blurb / Legal links list with all 6 docs / Contact emails) plus a bottom bar with Terms/Privacy/Cookies/Disclaimer quick links and `© 2025 AYK PTE LTD`. "Sign in" buttons toggle a full-screen overlay that renders the existing `LoginPage` (so login flow is unchanged).
+  - `/src/components/login/login-page.tsx` — wrapped the existing two-column layout in a `flex flex-col` outer container (so the footer sticks to the bottom) and added a legal footer bar with `© 2025 AYK PTE LTD` + 4 quick links (Terms of Service, Privacy Policy, Cookie Policy, Disclaimer). Also imported `Link` from `next/link`.
+- Settings → Legal tab:
+  - `/src/components/pages/settings-page.tsx` — added a 6th tab `Legal` (FileText icon, emerald). Changed `TabsList` from `sm:grid-cols-5` to `sm:grid-cols-3 lg:grid-cols-6` so the 6 tabs fit on one row at desktop and wrap to 3×2 on tablet. Added `LegalTab` component that renders: an Operating Entity card (AYK PTE. LTD., Singapore, Laws of Singapore, Last updated 15 Sep 2025), a 3-column grid of 6 cards (one per legal doc) each linking to the `/legal/<doc>` route with `target="_blank" rel="noopener noreferrer"` so they open in a new tab (as required because they're server-rendered routes outside the client-side app shell), a Contact card with `legal@ayk.com.sg` and `privacy@ayk.com.sg` mailto links, and a centered copyright line. Each card has a color-coded icon, title, description, and "Open document" affordance with an ExternalLink icon.
+- Validation:
+  - `bun run lint` — 0 errors, 0 warnings (after removing two unnecessary eslint-disable directives in `sw.js`).
+  - `bunx tsc --noEmit --skipLibCheck` — no errors in `src/` (initial `appleWebApp` on `Viewport` error fixed by moving it to `Metadata` only; remaining tsc errors are all pre-existing in `.next/dev/types`, `examples/`, `scripts/seed.ts`, and `skills/`).
+  - Verified all 8 legal routes return HTTP 200: `/legal`, `/legal/terms`, `/legal/privacy`, `/legal/cookies`, `/legal/acceptable-use`, `/legal/disclaimer`, `/legal/gdpr`.
+  - Verified PWA assets return 200: `/manifest.json`, `/sw.js`, `/icons/icon-192.png`, `/icons/icon-512.png`, `/icons/icon.svg`, `/icons/apple-touch-icon.png`, `/icons/favicon-32.png`, `/icons/favicon-16.png`, `/offline.html`.
+  - Verified root `/` returns 200 and the rendered HTML includes the manifest link, theme-color meta, apple-mobile-web-app meta tags, and the AYK title. An earlier transient SWC syntax error in `login-page.tsx` (caused by a missing closing div during the footer-edit) was resolved; the dev server now compiles `/` cleanly.
+
+Stage Summary:
+- Files created:
+  - `/src/app/legal/layout.tsx` — Server Component layout (Metadata + slate-50 wrapper)
+  - `/src/app/legal/page.tsx` — legal landing page (hero + 6-card grid + contact + entity + footer)
+  - `/src/app/legal/terms/page.tsx` — Terms of Service (14 sections)
+  - `/src/app/legal/privacy/page.tsx` — Privacy Policy (14 sections, GDPR + PDPA)
+  - `/src/app/legal/cookies/page.tsx` — Cookie Policy (8 sections)
+  - `/src/app/legal/acceptable-use/page.tsx` — Acceptable Use Policy (6 sections)
+  - `/src/app/legal/disclaimer/page.tsx` — Disclaimer (7 sections)
+  - `/src/app/legal/gdpr/page.tsx` — GDPR / Data Processing Addendum (12 sections)
+  - `/src/components/legal/legal-shell.tsx` — shared `LegalShell` client component (TOC sidebar + Back/Print + mobile drawer + prose body)
+  - `/src/components/pwa/register-sw.tsx` — SW registration client component (production-only)
+  - `/public/manifest.json` — PWA manifest (TWA-ready, 4 icons, 2 shortcuts)
+  - `/public/sw.js` — service worker (app-shell precache, network-first API, cache-first images, stale-while-revalidate assets, background sync queue, skipWaiting + clients.claim)
+  - `/public/offline.html` — branded offline fallback
+  - `/public/icons/icon.svg` — source SVG (sun + panel, emerald gradient, maskable-safe)
+  - `/public/icons/icon-192.png` — 192×192 PNG (generated via cairosvg)
+  - `/public/icons/icon-512.png` — 512×512 PNG (generated via cairosvg)
+  - `/public/icons/apple-touch-icon.png` — 180×180 PNG
+  - `/public/icons/favicon-32.png` — 32×32 PNG
+  - `/public/icons/favicon-16.png` — 16×16 PNG
+  - `/public/icons/README.md` — icon generation / Play Store TWA notes
+  - `/src/components/login/landing-page.tsx` — NEW marketing landing page with hero + features + footer (legal links + © 2025 AYK PTE LTD); "Sign in" opens `LoginPage` overlay
+- Files modified:
+  - `/src/app/layout.tsx` — added manifest link, theme-color, apple-mobile-web-app meta, msapplication meta, Viewport export, expanded icons, appleWebApp + formatDetection in Metadata, RegisterSW import & render
+  - `/src/app/globals.css` — added `.legal-prose` typography rules + print styles
+  - `/src/components/login/login-page.tsx` — wrapped layout in `flex flex-col` + added legal footer bar with Terms/Privacy/Cookies/Disclaimer links + © 2025 AYK PTE LTD; imported `Link` from `next/link`
+  - `/src/components/pages/settings-page.tsx` — added 6th `Legal` tab (`LegalTab` component) linking to all 6 legal docs (open in new tab), Operating Entity card, Contact card; expanded `TabsList` to `sm:grid-cols-3 lg:grid-cols-6`; imported `Link`, `FileText`, `Cookie`, `Scale`, `AlertTriangle`, `ExternalLink`, `Mail` from lucide-react
+- Decisions:
+  - All `/legal/*` pages are Server Components for SEO, print, and TWA packaging. The only client component in the legal tree is `LegalShell` (needed for the Print button + mobile TOC toggle), which the server pages import and pass props to. This satisfies the "Each page must be a Server Component" requirement.
+  - The shared `LegalShell` is the "shared LegalLayout component" required by the spec — it provides the sidebar TOC, Back/Print buttons, last-updated, and contact CTA consistently across all 6 docs.
+  - PWA SW registration is gated on `process.env.NODE_ENV === 'production'` so dev HMR is never cached.
+  - The service worker uses 3 caches (static/runtime/images) with version `v1.0.0` so future deploys can invalidate by bumping the constant. Background sync uses the standard `sync` event (Chrome/Edge); on browsers without BG Sync, queued mutations are replayed on next navigation via the in-memory queue.
+  - `manifest.json` declares icons with both `any` and `maskable` purposes at both 192 and 512 sizes (4 entries total) — Android Chrome requires maskable for adaptive icons, and Play Store TWA packaging requires a 512×512 entry.
+  - The landing page is a marketing-style entry point that wraps (but does not replace) the existing `LoginPage`; the login flow and demo accounts are unchanged. This avoids breaking the existing `LoginGate` → `LoginPage` flow while still providing a public landing surface for legal/Play Store visitors.
+  - The login page footer uses `print:hidden` so it doesn't appear in print/PDF exports.
+  - The Settings Legal tab opens each doc with `target="_blank" rel="noopener noreferrer"` because the `/legal/*` routes are outside the client-side app shell and need a full page load.
+  - No API routes, database schema, or other agents' files were modified.
+
+---
+Task ID: PROD-FINAL (Production Readiness)
+Agent: Main Agent
+Task: Production readiness — legal, PWA, Play Store, database autonomy, deployment docs
+
+Work Log:
+1. Dispatched PROD-1 subagent: created 7 legal pages (Terms, Privacy, Cookies, Acceptable Use, Disclaimer, GDPR/DPA) with shared LegalShell layout + TOC sidebar; PWA setup (manifest.json, service worker, offline.html, icons, SW registration); footer links on landing + login pages; Legal tab in Settings.
+2. Dispatched PROD-2 subagent: global error boundary (error.tsx, global-error.tsx), custom 404 (not-found.tsx), loading UI (loading.tsx); security headers in next.config.ts (CSP, X-Frame-Options, HSTS, etc.); sitemap.ts; .env.example; env.ts; responsive dialog fixes.
+3. Created twa-manifest.json for Play Store Bubblewrap/TWA packaging
+4. Created scripts/backup-db.sh — timestamped SQLite backup with gzip + 30-day auto-cleanup
+5. Created scripts/restore-db.sh — restore from gzipped backup with pre-restore safety backup
+6. Created public/.well-known/assetlinks.json for Play Store Digital Asset Links verification
+7. Created start-prod.sh — production server startup script
+8. Created comprehensive README.md (16KB) covering: overview, tech stack, dev quickstart, production deployment (Vercel/Self-hosted/Docker), Play Store TWA guide, PWA details, database & backups, multi-tenant architecture, legal & compliance, security checklist, env vars, scripts reference, troubleshooting
+9. Updated robots.txt with .well-known allow
+10. Verified all routes: /legal/* (7 pages), /manifest.json, /sw.js, /.well-known/assetlinks.json, /sitemap.xml, /not-found (404), auth, dashboard — all return correct HTTP codes
+11. Lint passes (0 errors)
+
+Stage Summary:
+- Legal: 7 comprehensive legal pages with responsive TOC layout
+- PWA: manifest, service worker (offline), icons (16/32/192/512/apple-touch), SW registration
+- Play Store: twa-manifest.json + assetlinks.json + README deployment guide
+- Error handling: global error boundary, 404 page, loading UI
+- Security: 10 security headers (CSP, HSTS, X-Frame-Options, etc.), env validation
+- Database: backup/restore scripts, PostgreSQL migration guide in README
+- Docs: 16KB README with full deployment, legal, security, and troubleshooting guides
+- Server stable, all routes verified

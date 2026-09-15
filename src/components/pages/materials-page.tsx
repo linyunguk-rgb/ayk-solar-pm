@@ -811,7 +811,7 @@ export function MaterialsPage() {
         open={materialDialog.open}
         onOpenChange={(o) => setMaterialDialog((s) => ({ ...s, open: o }))}
       >
-        <DialogContent className="w-full sm:max-w-lg">
+        <DialogContent className="w-full sm:max-w-lg max-h-[90vh] overflow-y-auto ayk-scrollbar">
           <DialogHeader>
             <DialogTitle>
               {materialDialog.mode === 'add' ? 'Add New Material' : 'Edit Material'}
@@ -924,7 +924,7 @@ export function MaterialsPage() {
         open={txnDialog.open}
         onOpenChange={(o) => setTxnDialog((s) => ({ ...s, open: o }))}
       >
-        <DialogContent className="w-full sm:max-w-lg">
+        <DialogContent className="w-full sm:max-w-lg max-h-[90vh] overflow-y-auto ayk-scrollbar">
           <DialogHeader>
             <DialogTitle>
               {txnDialog.material

@@ -770,7 +770,7 @@ export function ExpensesPage() {
         open={expenseDialog.open}
         onOpenChange={(o) => setExpenseDialog((s) => ({ ...s, open: o }))}
       >
-        <DialogContent className="w-full sm:max-w-lg">
+        <DialogContent className="w-full sm:max-w-lg max-h-[90vh] overflow-y-auto ayk-scrollbar">
           <DialogHeader>
             <DialogTitle>
               {expenseDialog.mode === 'add' ? 'Add New Expense' : 'Edit Expense'}

@@ -1,0 +1,50 @@
+{
+  "packageId": "sg.ayk.solarpm",
+  "host": "https://your-domain.com",
+  "name": "AYK Solar Project Management",
+  "launcherName": "AYK Solar",
+  "display": "standalone",
+  "orientation": "default",
+  "themeColor": "#10b981",
+  "navigationColor": "#0f172a",
+  "navigationColorDark": "#0f172a",
+  "navigationDividerColor": "#10b981",
+  "navigationDividerColorDark": "#10b981",
+  "backgroundColor": "#0f172a",
+  "enableNotifications": true,
+  "startUrl": "/",
+  "iconUrl": "https://your-domain.com/icons/icon-512.png",
+  "maskableIconUrl": "https://your-domain.com/icons/icon-512.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "./android.keystore",
+    "alias": "android"
+  },
+  "appVersionName": "1.0.0",
+  "appVersionCode": 1,
+  "shortcuts": [
+    { "name": "Dashboard", "shortName": "Home", "url": "/?nav=dashboard" },
+    { "name": "Daily Entry", "shortName": "Entry", "url": "/?nav=daily-entry" },
+    { "name": "Projects", "shortName": "Projects", "url": "/?nav=projects" }
+  ],
+  "generatorApp": "bubblewrap",
+  "webManifestUrl": "https://your-domain.com/manifest.json",
+  "fallbackType": "customtabs",
+  "features": {
+    "locationDelegation": {
+      "enable": true
+    },
+    "playDigitalAssetLinks": {
+      "enable": true
+    }
+  },
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "fullScopeUrl": "https://your-domain.com/",
+  "minSdkVersion": 21,
+  "_comment": "After updating 'host' to your production domain, run: bubblewrap update --manifest=https://your-domain.com/manifest.json then bubblewrap build"
+}

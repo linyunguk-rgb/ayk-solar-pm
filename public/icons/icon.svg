@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="55%" stop-color="#064e3b"/>
+      <stop offset="100%" stop-color="#10b981"/>
+    </linearGradient>
+    <linearGradient id="sun" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fde68a"/>
+      <stop offset="60%" stop-color="#fbbf24"/>
+      <stop offset="100%" stop-color="#f59e0b"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#67e8f9"/>
+      <stop offset="100%" stop-color="#0891b2"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="40%" r="55%">
+      <stop offset="0%" stop-color="#fbbf24" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#fbbf24" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Rounded emerald background (maskable-safe: keep important content within inner 80%) -->
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+
+  <!-- Soft glow behind sun -->
+  <circle cx="256" cy="200" r="170" fill="url(#glow)"/>
+
+  <!-- Sun rays -->
+  <g stroke="url(#sun)" stroke-width="14" stroke-linecap="round" fill="none" opacity="0.95">
+    <line x1="256" y1="56"  x2="256" y2="92"/>
+    <line x1="120" y1="120" x2="146" y2="146"/>
+    <line x1="392" y1="120" x2="366" y2="146"/>
+    <line x1="64"  y1="200" x2="100" y2="200"/>
+    <line x1="448" y1="200" x2="412" y2="200"/>
+  </g>
+
+  <!-- Sun disc -->
+  <circle cx="256" cy="200" r="60" fill="url(#sun)"/>
+
+  <!-- Solar panel (perspective trapezoid) -->
+  <g>
+    <polygon points="120,300 392,300 432,440 80,440" fill="#0b3d4a" stroke="#0ea5b7" stroke-width="3"/>
+    <!-- Panel grid -->
+    <g stroke="url(#panel)" stroke-width="4" fill="none" opacity="0.95">
+      <!-- horizontal divisions -->
+      <polyline points="100,346 412,346"/>
+      <polyline points="92,392 420,392"/>
+      <!-- vertical divisions -->
+      <polyline points="180,300 168,440"/>
+      <polyline points="256,300 256,440"/>
+      <polyline points="332,300 344,440"/>
+    </g>
+    <!-- Panel cells -->
+    <g fill="#0891b2" opacity="0.55">
+      <polygon points="180,300 256,300 256,346 168,346"/>
+      <polygon points="256,300 332,300 344,346 256,346"/>
+      <polygon points="120,300 180,300 168,346 100,346"/>
+      <polygon points="332,300 392,300 412,346 344,346"/>
+    </g>
+    <!-- Top panel highlight -->
+    <polygon points="120,300 392,300 392,308 120,308" fill="#67e8f9" opacity="0.55"/>
+  </g>
+
+  <!-- AYK wordmark -->
+  <g fill="#f8fafc" font-family="Helvetica, Arial, sans-serif" font-weight="700" text-anchor="middle">
+    <text x="256" y="472" font-size="34" letter-spacing="6">AYK</text>
+  </g>
+</svg>

@@ -317,7 +317,7 @@ export function DocumentsPage() {
 
       {/* ============== PREVIEW DIALOG ============== */}
       <Dialog open={!!previewDoc} onOpenChange={(o) => { if (!o) setPreviewDoc(null) }}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="w-full max-w-3xl max-h-[90vh] overflow-y-auto ayk-scrollbar">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 truncate">
               <FileText className="h-4 w-4 shrink-0 text-teal-600" />

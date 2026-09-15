@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
 import { useAppStore } from '@/store/app-store'
 import { apiPost } from '@/hooks/use-fetch'
 import { Button } from '@/components/ui/button'
@@ -65,7 +66,8 @@ export function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen w-full flex flex-col lg:flex-row bg-slate-50">
+    <div className="min-h-screen w-full flex flex-col bg-slate-50">
+      <div className="flex flex-1 flex-col lg:flex-row">
       {/* Left brand panel */}
       <div className="relative hidden lg:flex lg:w-1/2 flex-col justify-between overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-emerald-900 p-12 text-white">
         <div className="absolute inset-0 opacity-20" style={{
@@ -186,6 +188,20 @@ export function LoginPage() {
           </p>
         </div>
       </div>
+      </div>
+
+      {/* Legal footer */}
+      <footer className="border-t border-slate-200 bg-white print:hidden">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-5 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
+          <p>© 2025 {APP_NAME}. All rights reserved.</p>
+          <div className="flex items-center gap-4">
+            <Link href="/legal/terms" className="hover:text-emerald-700">Terms of Service</Link>
+            <Link href="/legal/privacy" className="hover:text-emerald-700">Privacy Policy</Link>
+            <Link href="/legal/cookies" className="hover:text-emerald-700">Cookie Policy</Link>
+            <Link href="/legal/disclaimer" className="hover:text-emerald-700">Disclaimer</Link>
+          </div>
+        </div>
+      </footer>
     </div>
   )
 }
