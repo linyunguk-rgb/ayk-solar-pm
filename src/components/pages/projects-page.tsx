@@ -26,7 +26,7 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
-import { ScrollArea } from '@/components/ui/scroll-area'
+import { HorizontalScrollTable } from '@/components/shared/horizontal-scroll-table'
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -269,7 +269,7 @@ function ProjectsList() {
       ) : (
         <Card className="border-border/60 shadow-sm">
           <CardContent className="p-0">
-            <ScrollArea className="max-h-[600px] ayk-scrollbar">
+            <HorizontalScrollTable minWidth="1100px" maxHeight="600px">
               <Table className="min-w-[1000px]">
                 <TableHeader className="sticky top-0 bg-card z-10">
                   <TableRow>
@@ -335,7 +335,7 @@ function ProjectsList() {
                   ))}
                 </TableBody>
               </Table>
-            </ScrollArea>
+            </HorizontalScrollTable>
           </CardContent>
         </Card>
       )}
@@ -803,7 +803,7 @@ function ProjectDetail() {
             </CardHeader>
             <CardContent>
               {project.dailyProgress && project.dailyProgress.length > 0 ? (
-                <ScrollArea className="max-h-96 ayk-scrollbar">
+                <HorizontalScrollTable minWidth="900px" maxHeight="384px">
                   <Table className="min-w-[800px]">
                     <TableHeader className="sticky top-0 bg-card z-10">
                       <TableRow>
@@ -834,7 +834,7 @@ function ProjectDetail() {
                       ))}
                     </TableBody>
                   </Table>
-                </ScrollArea>
+                </HorizontalScrollTable>
               ) : (
                 <EmptyState icon={<Sun className="h-5 w-5" />} title="No progress entries" description="Daily progress submissions will appear here." />
               )}
@@ -860,7 +860,7 @@ function ProjectDetail() {
             </CardHeader>
             <CardContent>
               {project.tasks && project.tasks.length > 0 ? (
-                <ScrollArea className="max-h-96 ayk-scrollbar">
+                <HorizontalScrollTable minWidth="900px" maxHeight="384px">
                   <Table className="min-w-[700px]">
                     <TableHeader className="sticky top-0 bg-card z-10">
                       <TableRow>
@@ -890,7 +890,7 @@ function ProjectDetail() {
                       ))}
                     </TableBody>
                   </Table>
-                </ScrollArea>
+                </HorizontalScrollTable>
               ) : (
                 <EmptyState icon={<CheckCircle2 className="h-5 w-5" />} title="No tasks" description="Tasks assigned to this project will appear here." />
               )}
@@ -916,7 +916,7 @@ function ProjectDetail() {
             </CardHeader>
             <CardContent>
               {project.expenses && project.expenses.length > 0 ? (
-                <ScrollArea className="max-h-96 ayk-scrollbar">
+                <HorizontalScrollTable minWidth="900px" maxHeight="384px">
                   <Table className="min-w-[800px]">
                     <TableHeader className="sticky top-0 bg-card z-10">
                       <TableRow>
@@ -941,7 +941,7 @@ function ProjectDetail() {
                       ))}
                     </TableBody>
                   </Table>
-                </ScrollArea>
+                </HorizontalScrollTable>
               ) : (
                 <EmptyState icon={<DollarSign className="h-5 w-5" />} title="No expenses" description="Expenses logged to this project will appear here." />
               )}
@@ -967,7 +967,7 @@ function ProjectDetail() {
             </CardHeader>
             <CardContent>
               {project.documents && project.documents.length > 0 ? (
-                <ScrollArea className="max-h-96 ayk-scrollbar">
+                <HorizontalScrollTable minWidth="900px" maxHeight="384px">
                   <Table className="min-w-[700px]">
                     <TableHeader className="sticky top-0 bg-card z-10">
                       <TableRow>
@@ -996,7 +996,7 @@ function ProjectDetail() {
                       ))}
                     </TableBody>
                   </Table>
-                </ScrollArea>
+                </HorizontalScrollTable>
               ) : (
                 <EmptyState icon={<FileText className="h-5 w-5" />} title="No documents" description="Project documents will appear here." />
               )}
@@ -1017,7 +1017,7 @@ function ProjectDetail() {
             </CardHeader>
             <CardContent>
               {project.materialTransactions && project.materialTransactions.length > 0 ? (
-                <ScrollArea className="max-h-96 ayk-scrollbar">
+                <HorizontalScrollTable minWidth="900px" maxHeight="384px">
                   <Table className="min-w-[700px]">
                     <TableHeader className="sticky top-0 bg-card z-10">
                       <TableRow>
@@ -1055,7 +1055,7 @@ function ProjectDetail() {
                       ))}
                     </TableBody>
                   </Table>
-                </ScrollArea>
+                </HorizontalScrollTable>
               ) : (
                 <EmptyState icon={<Package className="h-5 w-5" />} title="No material transactions" description="Material issues and receipts will appear here." />
               )}
@@ -1167,7 +1167,7 @@ function StagesCard({
             description="Stages are created when the project is added."
           />
         ) : (
-          <ScrollArea className="max-h-[500px] ayk-scrollbar">
+          <HorizontalScrollTable minWidth="1000px" maxHeight="500px">
             <Table className="min-w-[900px]">
               <TableHeader className="sticky top-0 bg-card z-10">
                 <TableRow>
@@ -1230,7 +1230,7 @@ function StagesCard({
                 ))}
               </TableBody>
             </Table>
-          </ScrollArea>
+          </HorizontalScrollTable>
         )}
       </CardContent>
     </Card>

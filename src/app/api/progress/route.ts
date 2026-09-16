@@ -1,16 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { getSessionUser } from '@/lib/auth'
+import { getSessionUser, tenantWhere } from '@/lib/auth'
 
 // GET daily progress entries with optional filters
 export async function GET(req: NextRequest) {
+  const user = await getSessionUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const tw = await tenantWhere()
   const { searchParams } = new URL(req.url)
   const projectId = searchParams.get('projectId')
   const limit = Number(searchParams.get('limit') || 50)
   const from = searchParams.get('from')
   const to = searchParams.get('to')
 
-  const where: any = {}
+  const where: any = { ...tw }
   if (projectId && projectId !== 'all') where.projectId = projectId
   if (from || to) {
     where.date = {}
@@ -37,9 +40,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Project and date required' }, { status: 400 })
   }
 
+  // Verify project belongs to tenant
+  const project = await db.project.findUnique({ where: { id: projectId }, select: { tenantId: true } })
+  if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+  if (!user.isMasterAdmin && project.tenantId !== user.tenantId) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
+
   const entry = await db.dailyProgress.create({
     data: {
-      projectId, date: new Date(date),
+      projectId, date: new Date(date), tenantId: user.tenantId,
       installedPanels: Number(installedPanels) || 0,
       totalInstalled: Number(totalInstalled) || 0,
       manHours: Number(manHours) || 0,
@@ -63,9 +73,9 @@ export async function POST(req: NextRequest) {
   }
 
   // Update installation stage actualPct if there's an Installation stage
-  const project = await db.project.findUnique({ where: { id: projectId } })
-  if (project && project.totalPanels > 0) {
-    const installPct = Math.min(100, Math.round((Number(totalInstalled) / project.totalPanels) * 1000) / 10)
+  const fullProject = await db.project.findUnique({ where: { id: projectId } })
+  if (fullProject && fullProject.totalPanels > 0) {
+    const installPct = Math.min(100, Math.round((Number(totalInstalled) / fullProject.totalPanels) * 1000) / 10)
     const installStage = await db.projectStage.findFirst({ where: { projectId, name: 'Installation' } })
     if (installStage) {
       await db.projectStage.update({ where: { id: installStage.id }, data: { actualPct: installPct, status: installPct >= 100 ? 'Completed' : 'InProgress' } })

@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getSessionUser, tenantWhere } from '@/lib/auth'
 
 export async function GET(req: NextRequest) {
+  const user = await getSessionUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const tw = await tenantWhere()
   const { searchParams } = new URL(req.url)
   const category = searchParams.get('category')
   const lowStock = searchParams.get('lowStock')
 
-  const where: any = {}
+  const where: any = { ...tw }
   if (category && category !== 'all') where.category = category
 
   let materials = await db.material.findMany({
@@ -23,6 +27,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const user = await getSessionUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const body = await req.json()
   const { name, category, unit, stockQty, minStockLevel, unitPrice, supplier } = body
   if (!name || !category) {
@@ -35,6 +41,7 @@ export async function POST(req: NextRequest) {
       minStockLevel: Number(minStockLevel) || 0,
       unitPrice: Number(unitPrice) || 0,
       supplier: supplier || null,
+      tenantId: user.tenantId,
     },
   })
   return NextResponse.json({ material })

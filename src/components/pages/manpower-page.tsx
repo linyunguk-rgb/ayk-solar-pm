@@ -26,7 +26,7 @@ import {
   Table, TableHeader, TableBody, TableHead, TableRow, TableCell,
 } from '@/components/ui/table'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
-import { ScrollArea } from '@/components/ui/scroll-area'
+import { HorizontalScrollTable } from '@/components/shared/horizontal-scroll-table'
 import {
   Users, Plus, Filter, Pencil, Trash2, LogIn, LogOut, Clock, UserCheck, UserX, Briefcase,
   Search, X, BarChart3,
@@ -491,7 +491,7 @@ export function ManpowerPage() {
           ) : (
             <Card className="border-border/60 shadow-sm">
               <CardContent className="p-0">
-                <ScrollArea className="max-h-[500px]">
+                <HorizontalScrollTable minWidth="1100px" maxHeight="500px">
                   <div className="min-w-[1000px]">
                     <Table>
                       <TableHeader className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur">
@@ -600,7 +600,7 @@ export function ManpowerPage() {
                       </TableBody>
                     </Table>
                   </div>
-                </ScrollArea>
+                </HorizontalScrollTable>
               </CardContent>
             </Card>
           )}
@@ -623,7 +623,7 @@ export function ManpowerPage() {
                   description="No attendance records for the past 7 days."
                 />
               ) : (
-                <ScrollArea className="max-h-[500px]">
+                <HorizontalScrollTable minWidth="900px" maxHeight="500px">
                   <div className="min-w-[800px]">
                     <Table>
                       <TableHeader className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur">
@@ -669,7 +669,7 @@ export function ManpowerPage() {
                       </TableBody>
                     </Table>
                   </div>
-                </ScrollArea>
+                </HorizontalScrollTable>
               )}
             </CardContent>
           </Card>

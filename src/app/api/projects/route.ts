@@ -1,14 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { PROJECT_STAGES, calcOverallProgress, calcPlannedProgress } from '@/lib/constants'
-import { getSessionUser } from '@/lib/auth'
+import { getSessionUser, tenantWhere } from '@/lib/auth'
 
 export async function GET(req: NextRequest) {
+  const user = await getSessionUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const tw = await tenantWhere()
+
   const { searchParams } = new URL(req.url)
   const status = searchParams.get('status')
   const managerId = searchParams.get('managerId')
 
-  const where: any = {}
+  const where: any = { ...tw }
   if (status && status !== 'all') where.status = status
   if (managerId) where.managerId = managerId
 
@@ -31,6 +35,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const user = await getSessionUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const tw = await tenantWhere()
   const body = await req.json()
   const { name, location, client, totalPanels, capacity, status, startDate, endDate, budget, managerId, description, code } = body
 
@@ -41,7 +46,7 @@ export async function POST(req: NextRequest) {
   // generate code if not provided
   let projectCode = code
   if (!projectCode) {
-    const count = await db.project.count()
+    const count = await db.project.count({ where: tw })
     projectCode = `AYK-NEW-${String(count + 1).padStart(3, '0')}`
   }
 
@@ -53,6 +58,7 @@ export async function POST(req: NextRequest) {
       startDate: new Date(startDate), endDate: new Date(endDate),
       budget: Number(budget) || 0, managerId: managerId || null,
       description: description || null,
+      tenantId: user.tenantId,
     },
     include: { stages: true, manager: true },
   })

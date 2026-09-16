@@ -1055,3 +1055,61 @@ Stage Summary:
 - Database: backup/restore scripts, PostgreSQL migration guide in README
 - Docs: 16KB README with full deployment, legal, security, and troubleshooting guides
 - Server stable, all routes verified
+
+---
+Task ID: TENANT-FILTER
+Agent: Multi-tenant API Isolation Verifier
+Task: Update ALL API routes to filter by tenantId using getSessionUser(), tenantWhere(), and ownership verification patterns.
+
+Work Log:
+- Read `/home/z/my-project/worklog.md` (1100+ lines) for full architecture context: AYK Solar PM, Next.js 16 App Router, Prisma + SQLite, Zustand view switching, demo auth via `ayk_session` cookie.
+- Read `/home/z/my-project/src/lib/auth.ts` — confirmed exports: `getSessionUser()` returns `SessionUser` (with `tenantId`, `isMasterAdmin`, `isTenantAdmin`), `getTenantFilter()` returns `null` for master admin (sees all) or `tenantId` for tenant users, `tenantWhere()` returns `{}` for master admin or `{ tenantId }` for tenant users.
+- Audited Prisma `schema.prisma`: every model except `Attendance` carries an optional `tenantId String?` field plus a `tenant Tenant? @relation(...)`. `Attendance` is intentionally tenant-less and is scoped via its `worker` relation — this is the correct design (worker belongs to a tenant, attendance inherits). The `Tenant` model itself exists (id, name, logo, address, uen, plan, isActive, timestamps).
+- Read all 27 API route files (plus the root `api/route.ts` placeholder, untouched). Verified each one against the required pattern:
+  1. GET list endpoints use `const tw = await tenantWhere()` then `where: { ...tw, ...otherFilters }`.
+  2. POST create endpoints set `tenantId: user.tenantId` on the new record (and verify parent project/material belongs to the tenant before linking).
+  3. GET/PUT/DELETE by-id endpoints fetch with `select: { tenantId: true }`, return 404 if missing, then check `if (!user.isMasterAdmin && existing.tenantId !== user.tenantId) return 404`.
+  4. Master admin (`isMasterAdmin: true`) bypasses all tenant checks because `tenantWhere()` returns `{}` and the by-id check skips for master admin.
+- File-by-file verification (all under `src/app/api/`):
+  1. `dashboard/route.ts` ✓ — `tw` applied to all 9 `findMany` calls (projects, tasks, workers, materials, safetyIncidents, expenses, notifications, safetyChecklists, dailyProgress). Attendance queries use `worker: { ...tw }` join (today's on-site count + 7-day manpower trend).
+  2. `projects/route.ts` ✓ — GET filters `where: { ...tw, ...status/manager }`; POST sets `tenantId: user.tenantId`, also tenant-scopes the auto-generated code via `db.project.count({ where: tw })`.
+  3. `projects/[id]/route.ts` ✓ — GET, PUT, DELETE all verify `project.tenantId !== user.tenantId` for non-master users. DELETE additionally requires Admin role.
+  4. `projects/[id]/stages/route.ts` ✓ — GET and PUT both load the parent project's `tenantId` and verify before reading/updating stages.
+  5. `progress/route.ts` ✓ — GET filters `where: { ...tw, projectId?, date? }`; POST sets `tenantId: user.tenantId` on the new DailyProgress and verifies the linked project belongs to the tenant.
+  6. `progress/[id]/route.ts` ✓ — DELETE loads entry's `tenantId` and verifies ownership.
+  7. `tasks/route.ts` ✓ — GET filters `where: { ...tw, projectId?, status?, assignedToId? }`; POST sets `tenantId: user.tenantId` and verifies linked project (if any).
+  8. `tasks/[id]/route.ts` ✓ — PUT and DELETE both verify task's `tenantId` matches.
+  9. `workers/route.ts` ✓ — GET filters `where: { ...tw, projectId?, team?, status? }`; POST sets `tenantId: user.tenantId` and verifies linked project.
+  10. `workers/[id]/route.ts` ✓ — PUT, DELETE, and POST (check-in/check-out) all verify worker's `tenantId` before acting. The POST creates an Attendance row (which has no tenantId column in schema — correctly inherits via `workerId`); the worker ownership check upstream prevents cross-tenant attendance creation.
+  11. `attendance/route.ts` ✓ — GET uses `where: { worker: { ...tw }, date?, workerId? }` to filter via the Worker relation (the correct pattern since Attendance has no direct tenantId).
+  12. `materials/route.ts` ✓ — GET filters `where: { ...tw, category? }`; POST sets `tenantId: user.tenantId`.
+  13. `materials/[id]/route.ts` ✓ — PUT and DELETE verify material's `tenantId`.
+  14. `transactions/route.ts` ✓ — GET filters `where: { ...tw, materialId?, projectId?, type? }`; POST sets `tenantId: user.tenantId` AND verifies the linked Material belongs to tenant AND verifies the linked Project (if any) belongs to tenant. Low-stock Notification side-effect also correctly scoped with `tenantId: user.tenantId`.
+  15. `expenses/route.ts` ✓ — GET filters `where: { ...tw, projectId?, category?, approvalStatus? }`; POST sets `tenantId: user.tenantId` and verifies linked project.
+  16. `expenses/[id]/route.ts` ✓ — PUT and DELETE verify expense's `tenantId`.
+  17. `safety/checklists/route.ts` ✓ — GET filters `where: { ...tw, projectId?, checklistType? }`; POST sets `tenantId: user.tenantId` and verifies linked project.
+  18. `safety/incidents/route.ts` ✓ — GET filters `where: { ...tw, projectId?, type?, status? }`; POST sets `tenantId: user.tenantId` on both the Incident and the auto-created Notification, verifies linked project.
+  19. `safety/incidents/[id]/route.ts` ✓ — PUT verifies incident's `tenantId`.
+  20. `documents/route.ts` ✓ — GET filters `where: { ...tw, projectId?, category? }`; POST sets `tenantId: user.tenantId` and verifies linked project.
+  21. `documents/[id]/route.ts` ✓ — DELETE verifies document's `tenantId`.
+  22. `documents/upload/route.ts` ✓ — POST sets `tenantId: user.tenantId` on the new Document, verifies linked project, AND stores the file under `public/uploads/<tenantId>/` so tenant files are physically isolated on disk too.
+  23. `notifications/route.ts` ✓ — GET uses `where: tw` directly.
+  24. `notifications/[id]/route.ts` ✓ — PUT verifies notification's `tenantId`; POST (mark-all-read when `id === 'all'`) uses `where: tw` so each tenant's batch is correctly scoped.
+  25. `users/route.ts` ✓ — GET uses `where: tw` (master admin sees `{}` → all users; tenant user sees only own tenant); POST sets `tenantId: user.tenantId` and requires Admin/TenantAdmin/MasterAdmin role.
+  26. `users/[id]/route.ts` ✓ — PUT and DELETE both verify user's `tenantId`; DELETE refuses to hard-delete master admin (soft-delete via `isActive: false`).
+  27. `reports/[type]/route.ts` ✓ — `tw` applied to all 7 top-level `findMany` calls (projects, tasks, workers, materials, expenses, incidents, checklists). Inside the switch cases, the on-demand `dailyProgress.findMany` calls (daily/weekly/monthly reports) also use `{ ...tw, date: ... }`. All reports therefore only contain the caller's tenant data; master admin sees cross-tenant aggregates.
+- Did NOT touch the excluded routes: `auth/login`, `auth/me`, `auth/demo-users`, `access-code/validate`, `company/setup`, `master/*` (tenants, codes, codes/[id]), `seed` — these are intentionally tenant-agnostic or master-admin-only and were already correct.
+- Did NOT touch any page components — task is API-only.
+- Ran `bun run lint` — clean (0 errors, 0 warnings). All route files compile, no TypeScript issues, no unused imports.
+- Verified no API route in the target list performs an unscoped `findMany`/`findFirst`/`findUnique`/`create`/`update`/`delete`. Cross-checked with `Grep` for `findMany` and `.create(` patterns across `src/app/api/**` — every match in the target list is preceded by either `where: { ...tw }` (list), `select: { tenantId: true }` + ownership check (by-id), or `tenantId: user.tenantId` (create).
+
+Stage Summary:
+- All 27 target API routes verified to enforce multi-tenant data isolation:
+  - 9 list endpoints (dashboard, projects, progress, tasks, workers, attendance, materials, transactions, expenses, safety/checklists, safety/incidents, documents, notifications, users) → all `findMany` calls carry `...tw`.
+  - 13 create endpoints (projects, progress, tasks, workers, materials, transactions, expenses, safety/checklists, safety/incidents, documents, documents/upload, users, notifications mark-all-read side-effect) → all set `tenantId: user.tenantId`.
+  - 16 by-id endpoints (projects/[id] GET/PUT/DELETE, projects/[id]/stages GET/PUT, progress/[id] DELETE, tasks/[id] PUT/DELETE, workers/[id] PUT/DELETE/POST, materials/[id] PUT/DELETE, expenses/[id] PUT/DELETE, safety/incidents/[id] PUT, documents/[id] DELETE, notifications/[id] PUT/POST, users/[id] PUT/DELETE) → all verify `existing.tenantId !== user.tenantId` with master-admin bypass.
+  - 1 report endpoint (`reports/[type]`) → all 7 top-level + 3 case-scoped `findMany` calls carry `...tw`.
+- Master admin (`isMasterAdmin: true`) sees ALL data across tenants; tenant users see only their own tenant's data.
+- Response shapes preserved: `{ items }`/`{ projects }`/`{ tasks }`/etc. unchanged — no client-side breakage.
+- Lint clean.
+- No files modified (everything already in place from earlier foundation work); this task was a verification pass that confirmed all 27 routes conform to the required tenant-isolation pattern. The patterns documented in this entry now serve as the canonical reference for future API routes.

@@ -1,0 +1,1053 @@
+     1→'use client'
+     2→
+     3→import { useMemo, useState } from 'react'
+     4→import { useAppStore } from '@/store/app-store'
+     5→import { useFetch, apiPost, apiPut, apiDelete } from '@/hooks/use-fetch'
+     6→import { SectionHeader, SubSection } from '@/components/shared/section-header'
+     7→import { StatCard } from '@/components/shared/stat-card'
+     8→import { EmptyState } from '@/components/shared/empty-state'
+     9→import {
+    10→  Card, CardContent, CardHeader, CardTitle, CardDescription,
+    11→} from '@/components/ui/card'
+    12→import { Button } from '@/components/ui/button'
+    13→import { Badge } from '@/components/ui/badge'
+    14→import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+    15→import {
+    16→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    17→} from '@/components/ui/select'
+    18→import { Input } from '@/components/ui/input'
+    19→import { Label } from '@/components/ui/label'
+    20→import { Checkbox } from '@/components/ui/checkbox'
+    21→import { ScrollArea } from '@/components/ui/scroll-area'
+    22→import {
+    23→  Table, TableHeader, TableBody, TableHead, TableRow, TableCell,
+    24→} from '@/components/ui/table'
+    25→import {
+    26→  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+    27→} from '@/components/ui/dialog'
+    28→import {
+    29→  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
+    30→  AlertDialogDescription, AlertDialogFooter, AlertDialogAction, AlertDialogCancel,
+    31→} from '@/components/ui/alert-dialog'
+    32→import { Skeleton } from '@/components/ui/skeleton'
+    33→import {
+    34→  Package, Plus, ArrowLeftRight, AlertTriangle, Pencil, Trash2,
+    35→  ArrowDownToLine, ArrowUpFromLine, ArrowLeft as ArrowIn, Boxes, Layers,
+    36→  DollarSign, PackageX, Warehouse, BarChart3,
+    37→} from 'lucide-react'
+    38→import {
+    39→  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid,
+    40→  Tooltip as RTooltip, Legend,
+    41→} from 'recharts'
+    42→import {
+    43→  MATERIAL_CATEGORIES, MATERIAL_CATEGORY_LABELS,
+    44→  formatCurrency, formatDate,
+    45→} from '@/lib/constants'
+    46→import { toast } from 'sonner'
+    47→import { cn } from '@/lib/utils'
+    48→
+    49→// Distinct category badge colors (no indigo)
+    50→const CATEGORY_BADGE: Record<string, string> = {
+    51→  SolarPanels: 'bg-amber-100 text-amber-700 border-amber-200 hover:bg-amber-100',
+    52→  DCCables: 'bg-sky-100 text-sky-700 border-sky-200 hover:bg-sky-100',
+    53→  ACCables: 'bg-teal-100 text-teal-700 border-teal-200 hover:bg-teal-100',
+    54→  MountingRails: 'bg-slate-200 text-slate-700 border-slate-300 hover:bg-slate-200',
+    55→  Inverters: 'bg-emerald-100 text-emerald-700 border-emerald-200 hover:bg-emerald-100',
+    56→  MC4Connectors: 'bg-orange-100 text-orange-700 border-orange-200 hover:bg-orange-100',
+    57→  Bolts: 'bg-violet-100 text-violet-700 border-violet-200 hover:bg-violet-100',
+    58→  Other: 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-100',
+    59→}
+    60→
+    61→function CategoryBadge({ category }: { category: string }) {
+    62→  return (
+    63→    <Badge variant="outline" className={cn('font-medium', CATEGORY_BADGE[category] || CATEGORY_BADGE.Other)}>
+    64→      {MATERIAL_CATEGORY_LABELS[category] || category}
+    65→    </Badge>
+    66→  )
+    67→}
+    68→
+    69→function TransactionTypeBadge({ type }: { type: string }) {
+    70→  const cls =
+    71→    type === 'Add' ? 'bg-emerald-100 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+    72→      : type === 'Issue' ? 'bg-sky-100 text-sky-700 border-sky-200 hover:bg-sky-100'
+    73→        : 'bg-amber-100 text-amber-700 border-amber-200 hover:bg-amber-100'
+    74→  return <Badge variant="outline" className={cn('font-medium', cls)}>{type}</Badge>
+    75→}
+    76→
+    77→function formatQty(n: number | null | undefined): string {
+    78→  const v = Number(n ?? 0)
+    79→  if (!isFinite(v)) return '0'
+    80→  return Number.isInteger(v) ? String(v) : String(v)
+    81→}
+    82→
+    83→interface MaterialFormState {
+    84→  name: string
+    85→  category: string
+    86→  unit: string
+    87→  stockQty: number
+    88→  minStockLevel: number
+    89→  unitPrice: number
+    90→  supplier: string
+    91→}
+    92→
+    93→const EMPTY_MATERIAL_FORM: MaterialFormState = {
+    94→  name: '',
+    95→  category: 'SolarPanels',
+    96→  unit: 'pcs',
+    97→  stockQty: 0,
+    98→  minStockLevel: 0,
+    99→  unitPrice: 0,
+   100→  supplier: '',
+   101→}
+   102→
+   103→interface TxnFormState {
+   104→  materialId: string
+   105→  projectId: string
+   106→  type: 'Add' | 'Issue' | 'Return'
+   107→  qty: number
+   108→  remarks: string
+   109→}
+   110→
+   111→const EMPTY_TXN_FORM: TxnFormState = {
+   112→  materialId: '',
+   113→  projectId: 'none',
+   114→  type: 'Add',
+   115→  qty: 0,
+   116→  remarks: '',
+   117→}
+   118→
+   119→export function MaterialsPage() {
+   120→  const { user } = useAppStore()
+   121→
+   122→  const [activeTab, setActiveTab] = useState<'inventory' | 'transactions'>('inventory')
+   123→
+   124→  // Inventory filters
+   125→  const [categoryFilter, setCategoryFilter] = useState<string>('all')
+   126→  const [lowStockOnly, setLowStockOnly] = useState(false)
+   127→
+   128→  // Transaction filters
+   129→  const [txnMaterialFilter, setTxnMaterialFilter] = useState<string>('all')
+   130→  const [txnProjectFilter, setTxnProjectFilter] = useState<string>('all')
+   131→  const [txnTypeFilter, setTxnTypeFilter] = useState<string>('all')
+   132→
+   133→  // Material dialog state (add/edit)
+   134→  const [materialDialog, setMaterialDialog] = useState<{ open: boolean; mode: 'add' | 'edit'; material?: any }>({
+   135→    open: false, mode: 'add',
+   136→  })
+   137→  const [mForm, setMForm] = useState<MaterialFormState>(EMPTY_MATERIAL_FORM)
+   138→  const [savingMaterial, setSavingMaterial] = useState(false)
+   139→
+   140→  // Transaction dialog state
+   141→  const [txnDialog, setTxnDialog] = useState<{ open: boolean; material?: any; type?: 'Add' | 'Issue' | 'Return' }>({
+   142→    open: false,
+   143→  })
+   144→  const [tForm, setTForm] = useState<TxnFormState>(EMPTY_TXN_FORM)
+   145→  const [savingTxn, setSavingTxn] = useState(false)
+   146→
+   147→  // Delete confirmation
+   148→  const [deleteId, setDeleteId] = useState<string | null>(null)
+   149→
+   150→  // Fetches (single-source-of-truth: no server filter; filter client-side)
+   151→  const { data: materialsData, loading: loadingMaterials, refetch: refetchMaterials } = useFetch<any>('/api/materials')
+   152→  const { data: txnData, loading: loadingTxns, refetch: refetchTxns } = useFetch<any>('/api/transactions')
+   153→  const { data: projectsData } = useFetch<any>('/api/projects')
+   154→
+   155→  const materials = (materialsData?.materials || []) as any[]
+   156→  const transactions = (txnData?.transactions || []) as any[]
+   157→  const projects = (projectsData?.projects || []) as any[]
+   158→
+   159→  // Filtered inventory
+   160→  const filteredMaterials = useMemo(() => {
+   161→    let arr = [...materials]
+   162→    if (categoryFilter !== 'all') arr = arr.filter((m) => m.category === categoryFilter)
+   163→    if (lowStockOnly) arr = arr.filter((m) => Number(m.stockQty ?? 0) <= Number(m.minStockLevel ?? 0))
+   164→    return arr
+   165→  }, [materials, categoryFilter, lowStockOnly])
+   166→
+   167→  // Filtered transactions
+   168→  const filteredTxns = useMemo(() => {
+   169→    let arr = [...transactions]
+   170→    if (txnMaterialFilter !== 'all') arr = arr.filter((t) => t.materialId === txnMaterialFilter)
+   171→    if (txnProjectFilter !== 'all') arr = arr.filter((t) => t.projectId === txnProjectFilter)
+   172→    if (txnTypeFilter !== 'all') arr = arr.filter((t) => t.type === txnTypeFilter)
+   173→    return arr
+   174→  }, [transactions, txnMaterialFilter, txnProjectFilter, txnTypeFilter])
+   175→
+   176→  // Stats
+   177→  const stats = useMemo(() => {
+   178→    const total = materials.length
+   179→    const lowStock = materials.filter((m) => Number(m.stockQty ?? 0) <= Number(m.minStockLevel ?? 0)).length
+   180→    const outOfStock = materials.filter((m) => Number(m.stockQty ?? 0) <= 0).length
+   181→    const totalStockValue = materials.reduce((s, m) => s + (Number(m.stockQty ?? 0) * Number(m.unitPrice ?? 0)), 0)
+   182→    const categories = new Set(materials.map((m) => m.category)).size
+   183→    return { total, lowStock, outOfStock, totalStockValue, categories }
+   184→  }, [materials])
+   185→
+   186→  // Low stock materials (for alert card)
+   187→  const lowStockMaterials = useMemo(
+   188→    () => materials.filter((m) => Number(m.stockQty ?? 0) <= Number(m.minStockLevel ?? 0)),
+   189→    [materials],
+   190→  )
+   191→
+   192→  // Usage chart: total issued qty per material in last 30 days
+   193→  const usageChart = useMemo(() => {
+   194→    const cutoff = new Date()
+   195→    cutoff.setDate(cutoff.getDate() - 30)
+   196→    const map: Record<string, { name: string; issued: number; added: number; returned: number }> = {}
+   197→    for (const t of transactions) {
+   198→      const d = new Date(t.date)
+   199→      if (d < cutoff) continue
+   200→      const key = t.materialId || 'unknown'
+   201→      const mname = t.material?.name || 'Unknown'
+   202→      if (!map[key]) map[key] = { name: mname, issued: 0, added: 0, returned: 0 }
+   203→      if (t.type === 'Issue') map[key].issued += Number(t.qty ?? 0)
+   204→      else if (t.type === 'Add') map[key].added += Number(t.qty ?? 0)
+   205→      else if (t.type === 'Return') map[key].returned += Number(t.qty ?? 0)
+   206→    }
+   207→    return Object.values(map).sort((a, b) => b.issued - a.issued).slice(0, 10)
+   208→  }, [transactions])
+   209→
+   210→  // ---------- Handlers ----------
+   211→  const openAddMaterial = () => {
+   212→    setMForm(EMPTY_MATERIAL_FORM)
+   213→    setMaterialDialog({ open: true, mode: 'add' })
+   214→  }
+   215→
+   216→  const openEditMaterial = (m: any) => {
+   217→    setMForm({
+   218→      name: m.name || '',
+   219→      category: m.category || 'SolarPanels',
+   220→      unit: m.unit || 'pcs',
+   221→      stockQty: Number(m.stockQty) || 0,
+   222→      minStockLevel: Number(m.minStockLevel) || 0,
+   223→      unitPrice: Number(m.unitPrice) || 0,
+   224→      supplier: m.supplier || '',
+   225→    })
+   226→    setMaterialDialog({ open: true, mode: 'edit', material: m })
+   227→  }
+   228→
+   229→  const submitMaterial = async () => {
+   230→    if (!mForm.name.trim()) {
+   231→      toast.error('Material name is required')
+   232→      return
+   233→    }
+   234→    if (!mForm.category) {
+   235→      toast.error('Material category is required')
+   236→      return
+   237→    }
+   238→    setSavingMaterial(true)
+   239→    try {
+   240→      const body = {
+   241→        name: mForm.name.trim(),
+   242→        category: mForm.category,
+   243→        unit: mForm.unit || 'pcs',
+   244→        stockQty: Number(mForm.stockQty) || 0,
+   245→        minStockLevel: Number(mForm.minStockLevel) || 0,
+   246→        unitPrice: Number(mForm.unitPrice) || 0,
+   247→        supplier: mForm.supplier?.trim() || null,
+   248→      }
+   249→      if (materialDialog.mode === 'add') {
+   250→        await apiPost('/api/materials', body)
+   251→        toast.success(`Material "${body.name}" added`)
+   252→      } else if (materialDialog.mode === 'edit' && materialDialog.material?.id) {
+   253→        await apiPut(`/api/materials/${materialDialog.material.id}`, body)
+   254→        toast.success(`Material "${body.name}" updated`)
+   255→      }
+   256→      setMaterialDialog({ open: false, mode: 'add' })
+   257→      refetchMaterials()
+   258→    } catch (e: any) {
+   259→      toast.error(e.message || 'Failed to save material')
+   260→    } finally {
+   261→      setSavingMaterial(false)
+   262→    }
+   263→  }
+   264→
+   265→  const openTxnDialog = (opts?: { material?: any; type?: 'Add' | 'Issue' | 'Return' }) => {
+   266→    setTForm({
+   267→      materialId: opts?.material?.id || '',
+   268→      projectId: 'none',
+   269→      type: opts?.type || 'Add',
+   270→      qty: 0,
+   271→      remarks: '',
+   272→    })
+   273→    setTxnDialog({ open: true, material: opts?.material, type: opts?.type })
+   274→  }
+   275→
+   276→  const submitTxn = async () => {
+   277→    if (!tForm.materialId) {
+   278→      toast.error('Select a material')
+   279→      return
+   280→    }
+   281→    if (!tForm.qty || Number(tForm.qty) <= 0) {
+   282→      toast.error('Quantity must be greater than 0')
+   283→      return
+   284→    }
+   285→    setSavingTxn(true)
+   286→    try {
+   287→      const body = {
+   288→        materialId: tForm.materialId,
+   289→        projectId: tForm.projectId && tForm.projectId !== 'none' ? tForm.projectId : null,
+   290→        type: tForm.type,
+   291→        qty: Number(tForm.qty),
+   292→        remarks: tForm.remarks?.trim() || null,
+   293→        date: new Date().toISOString(),
+   294→      }
+   295→      await apiPost<any>('/api/transactions', body)
+   296→      toast.success(`${tForm.type} ${body.qty} — stock updated`)
+   297→      setTxnDialog({ open: false })
+   298→      refetchMaterials()
+   299→      refetchTxns()
+   300→    } catch (e: any) {
+   301→      toast.error(e.message || 'Failed to record transaction')
+   302→    } finally {
+   303→      setSavingTxn(false)
+   304→    }
+   305→  }
+   306→
+   307→  const confirmDelete = async () => {
+   308→    if (!deleteId) return
+   309→    try {
+   310→      await apiDelete(`/api/materials/${deleteId}`)
+   311→      toast.success('Material deleted')
+   312→      refetchMaterials()
+   313→    } catch (e: any) {
+   314→      toast.error(e.message || 'Failed to delete material')
+   315→    } finally {
+   316→      setDeleteId(null)
+   317→    }
+   318→  }
+   319→
+   320→  // ---------- Render: Loading ----------
+   321→  if (loadingMaterials && !materialsData) {
+   322→    return (
+   323→      <div className="space-y-6">
+   324→        <SectionHeader
+   325→          section="materials"
+   326→          title="Material Management"
+   327→          description="Track solar materials, stock and transactions"
+   328→          icon={<Package className="h-6 w-6" />}
+   329→        />
+   330→        <div>
+   331→          <SubSection section="materials" title="Inventory Summary" icon={<BarChart3 className="h-4 w-4" />} />
+   332→          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+   333→            {Array.from({ length: 4 }).map((_, i) => (
+   334→              <Card key={i} className="overflow-hidden border-border/60">
+   335→                <CardContent className="p-4 h-28">
+   336→                  <Skeleton className="h-full w-full" />
+   337→                </CardContent>
+   338→              </Card>
+   339→            ))}
+   340→          </div>
+   341→        </div>
+   342→        <Card className="overflow-hidden border-border/60">
+   343→          <CardContent className="p-6">
+   344→            <Skeleton className="h-72 w-full" />
+   345→          </CardContent>
+   346→        </Card>
+   347→      </div>
+   348→    )
+   349→  }
+   350→
+   351→  return (
+   352→    <div className="space-y-6">
+   353→      <SectionHeader
+   354→        section="materials"
+   355→        title="Material Management"
+   356→        description="Track solar materials, stock and transactions"
+   357→        icon={<Package className="h-6 w-6" />}
+   358→        actions={
+   359→          <>
+   360→            <Button onClick={openAddMaterial} className="bg-violet-600 hover:bg-violet-700 text-white">
+   361→              <Plus className="h-4 w-4" /> <span className="hidden sm:inline">Add Material</span><span className="sm:hidden">Add</span>
+   362→            </Button>
+   363→            <Button variant="outline" onClick={() => openTxnDialog()} className="border-violet-200 text-violet-700 hover:bg-violet-50">
+   364→              <ArrowLeftRight className="h-4 w-4" /> <span className="hidden sm:inline">New Transaction</span><span className="sm:hidden">Transaction</span>
+   365→            </Button>
+   366→          </>
+   367→        }
+   368→      />
+   369→
+   370→      {/* Stat cards — Inventory Summary */}
+   371→      <div>
+   372→        <SubSection
+   373→          section="materials"
+   374→          title="Inventory Summary"
+   375→          description="Stock levels and inventory value at a glance"
+   376→          icon={<BarChart3 className="h-4 w-4" />}
+   377→        />
+   378→        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+   379→          <StatCard
+   380→            section="materials"
+   381→            title="Total Materials"
+   382→            value={stats.total ?? 0}
+   383→            subtitle={`${stats.categories ?? 0} categories`}
+   384→            icon={<Boxes className="h-5 w-5" />}
+   385→          />
+   386→          <StatCard
+   387→            section="safety"
+   388→            title="Low Stock Items"
+   389→            value={stats.lowStock ?? 0}
+   390→            subtitle={`${stats.outOfStock ?? 0} out of stock`}
+   391→            icon={<AlertTriangle className="h-5 w-5" />}
+   392→          />
+   393→          <StatCard
+   394→            section="materials"
+   395→            title="Total Stock Value"
+   396→            value={formatCurrency(stats.totalStockValue)}
+   397→            subtitle="Inventory worth"
+   398→            icon={<DollarSign className="h-5 w-5" />}
+   399→          />
+   400→          <StatCard
+   401→            section="materials"
+   402→            title="Categories"
+   403→            value={stats.categories ?? 0}
+   404→            subtitle="Distinct types"
+   405→            icon={<Layers className="h-5 w-5" />}
+   406→          />
+   407→        </div>
+   408→      </div>
+   409→
+   410→      {/* Low stock alert card */}
+   411→      {lowStockMaterials.length > 0 && (
+   412→        <Card className="border-amber-300 bg-amber-50/60">
+   413→          <CardHeader className="pb-3">
+   414→            <CardTitle className="text-base font-semibold flex items-center gap-2 text-amber-800">
+   415→              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-200 text-amber-800">
+   416→                <AlertTriangle className="h-4 w-4" />
+   417→              </span>
+   418→              Low Stock Alert
+   419→              <Badge className="bg-amber-200 text-amber-800 border-amber-300 ml-1">{lowStockMaterials.length}</Badge>
+   420→            </CardTitle>
+   421→            <CardDescription className="text-xs text-amber-800/80 pl-9">
+   422→              {lowStockMaterials.length} item(s) at or below minimum stock level — please restock
+   423→            </CardDescription>
+   424→          </CardHeader>
+   425→          <CardContent>
+   426→            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-72 overflow-y-auto ayk-scrollbar pr-1">
+   427→              {lowStockMaterials.map((m) => {
+   428→                const out = Number(m.stockQty ?? 0) <= 0
+   429→                return (
+   430→                  <div
+   431→                    key={m.id}
+   432→                    className={cn(
+   433→                      'flex items-center justify-between rounded-lg border bg-white px-3 py-2.5',
+   434→                      out ? 'border-red-200' : 'border-amber-200',
+   435→                    )}
+   436→                  >
+   437→                    <div className="min-w-0">
+   438→                      <div className="text-sm font-medium text-slate-900 truncate">{m.name || 'Unnamed'}</div>
+   439→                      <div className="text-xs text-slate-500">
+   440→                        Min: {formatQty(m.minStockLevel)} {m.unit || ''}
+   441→                      </div>
+   442→                    </div>
+   443→                    <Badge
+   444→                      className={cn(
+   445→                        'shrink-0',
+   446→                        out
+   447→                          ? 'bg-red-100 text-red-700 border-red-200'
+   448→                          : 'bg-amber-100 text-amber-800 border-amber-200',
+   449→                      )}
+   450→                    >
+   451→                      {formatQty(m.stockQty)} {m.unit || ''}
+   452→                    </Badge>
+   453→                  </div>
+   454→                )
+   455→              })}
+   456→            </div>
+   457→          </CardContent>
+   458→        </Card>
+   459→      )}
+   460→
+   461→      {/* Tabs */}
+   462→      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'inventory' | 'transactions')}>
+   463→        <TabsList className="bg-violet-50">
+   464→          <TabsTrigger value="inventory" className="data-[state=active]:bg-white data-[state=active]:text-violet-700">
+   465→            <Package className="h-4 w-4" /> <span className="hidden sm:inline">Inventory</span>
+   466→          </TabsTrigger>
+   467→          <TabsTrigger value="transactions" className="data-[state=active]:bg-white data-[state=active]:text-violet-700">
+   468→            <ArrowLeftRight className="h-4 w-4" /> <span className="hidden sm:inline">Transactions</span>
+   469→          </TabsTrigger>
+   470→        </TabsList>
+   471→
+   472→        {/* Inventory tab */}
+   473→        <TabsContent value="inventory" className="space-y-4">
+   474→          {/* Filter bar */}
+   475→          <Card className="shadow-sm border-border/60">
+   476→            <CardContent className="p-4">
+   477→              <div className="flex flex-col sm:flex-row sm:items-end gap-4">
+   478→                <div className="flex-1 min-w-[180px]">
+   479→                  <Label className="mb-1.5 text-xs text-muted-foreground uppercase tracking-wide">Category</Label>
+   480→                  <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+   481→                    <SelectTrigger className="w-full">
+   482→                      <SelectValue placeholder="All categories" />
+   483→                    </SelectTrigger>
+   484→                    <SelectContent>
+   485→                      <SelectItem value="all">All Categories</SelectItem>
+   486→                      {MATERIAL_CATEGORIES.map((c) => (
+   487→                        <SelectItem key={c} value={c}>
+   488→                          {MATERIAL_CATEGORY_LABELS[c]}
+   489→                        </SelectItem>
+   490→                      ))}
+   491→                    </SelectContent>
+   492→                  </Select>
+   493→                </div>
+   494→                <div className="flex items-center gap-2 pb-1">
+   495→                  <Checkbox
+   496→                    id="low-stock-only"
+   497→                    checked={lowStockOnly}
+   498→                    onCheckedChange={(v) => setLowStockOnly(v === true)}
+   499→                  />
+   500→                  <Label htmlFor="low-stock-only" className="text-sm cursor-pointer">
+   501→                    Low Stock Only
+   502→                  </Label>
+   503→                </div>
+   504→                <div className="text-xs text-muted-foreground sm:ml-auto sm:pb-1">
+   505→                  {filteredMaterials.length} of {materials.length} shown
+   506→                </div>
+   507→              </div>
+   508→            </CardContent>
+   509→          </Card>
+   510→
+   511→          {/* Inventory table */}
+   512→          <Card className="shadow-sm border-border/60">
+   513→            <CardHeader className="pb-3">
+   514→              <CardTitle className="text-base font-semibold flex items-center gap-2">
+   515→                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-100 text-violet-700">
+   516→                  <Warehouse className="h-4 w-4" />
+   517→                </span>
+   518→                Inventory List
+   519→              </CardTitle>
+   520→              <CardDescription className="text-xs pl-9">
+   521→                Manage stock levels, pricing and supplier details
+   522→              </CardDescription>
+   523→            </CardHeader>
+   524→            <CardContent className="px-0 pb-0">
+   525→              <ScrollArea className="max-h-[500px] w-full">
+   526→                <Table>
+   527→                  <TableHeader className="sticky top-0 bg-card z-10">
+   528→                    <TableRow>
+   529→                      <TableHead className="min-w-[180px]">Name</TableHead>
+   530→                      <TableHead className="min-w-[120px]">Category</TableHead>
+   531→                      <TableHead className="text-right min-w-[90px]">Stock Qty</TableHead>
+   532→                      <TableHead className="min-w-[70px]">Unit</TableHead>
+   533→                      <TableHead className="text-right min-w-[90px]">Min Level</TableHead>
+   534→                      <TableHead className="text-right min-w-[100px]">Unit Price</TableHead>
+   535→                      <TableHead className="text-right min-w-[110px]">Stock Value</TableHead>
+   536→                      <TableHead className="min-w-[140px]">Supplier</TableHead>
+   537→                      <TableHead className="text-right min-w-[180px]">Actions</TableHead>
+   538→                    </TableRow>
+   539→                  </TableHeader>
+   540→                  <TableBody>
+   541→                    {filteredMaterials.length === 0 ? (
+   542→                      <TableRow>
+   543→                        <TableCell colSpan={9} className="p-0">
+   544→                          <EmptyState
+   545→                            icon={<PackageX className="h-6 w-6" />}
+   546→                            title="No materials match the current filters"
+   547→                            description="Try clearing filters or add a new material to get started."
+   548→                            action={
+   549→                              <Button size="sm" onClick={openAddMaterial} className="bg-violet-600 hover:bg-violet-700 text-white">
+   550→                                <Plus className="h-4 w-4" /> Add Material
+   551→                              </Button>
+   552→                            }
+   553→                          />
+   554→                        </TableCell>
+   555→                      </TableRow>
+   556→                    ) : (
+   557→                      filteredMaterials.map((m) => {
+   558→                        const isLow = Number(m.stockQty ?? 0) <= Number(m.minStockLevel ?? 0)
+   559→                        const stockValue = (Number(m.stockQty ?? 0)) * (Number(m.unitPrice ?? 0))
+   560→                        return (
+   561→                          <TableRow key={m.id}>
+   562→                            <TableCell className="font-medium text-slate-900">{m.name || 'Unnamed'}</TableCell>
+   563→                            <TableCell><CategoryBadge category={m.category} /></TableCell>
+   564→                            <TableCell className="text-right">
+   565→                              <span
+   566→                                className={cn(
+   567→                                  'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-semibold tabular-nums',
+   568→                                  isLow
+   569→                                    ? 'bg-red-100 text-red-700'
+   570→                                    : 'bg-emerald-100 text-emerald-700',
+   571→                                )}
+   572→                              >
+   573→                                {isLow && <AlertTriangle className="h-3 w-3" />}
+   574→                                {formatQty(m.stockQty)}
+   575→                              </span>
+   576→                            </TableCell>
+   577→                            <TableCell className="text-muted-foreground">{m.unit || '—'}</TableCell>
+   578→                            <TableCell className="text-right tabular-nums text-slate-600">{formatQty(m.minStockLevel)}</TableCell>
+   579→                            <TableCell className="text-right tabular-nums text-slate-700">{formatCurrency(Number(m.unitPrice ?? 0))}</TableCell>
+   580→                            <TableCell className="text-right tabular-nums font-medium text-slate-900">{formatCurrency(stockValue)}</TableCell>
+   581→                            <TableCell className="text-muted-foreground text-xs">{m.supplier || '—'}</TableCell>
+   582→                            <TableCell>
+   583→                              <div className="flex items-center justify-end gap-1">
+   584→                                <Button
+   585→                                  size="icon"
+   586→                                  variant="ghost"
+   587→                                  className="h-8 w-8 text-emerald-600 hover:bg-emerald-50"
+   588→                                  onClick={() => openTxnDialog({ material: m, type: 'Add' })}
+   589→                                  title="Add Stock"
+   590→                                >
+   591→                                  <ArrowDownToLine className="h-4 w-4" />
+   592→                                </Button>
+   593→                                <Button
+   594→                                  size="icon"
+   595→                                  variant="ghost"
+   596→                                  className="h-8 w-8 text-sky-600 hover:bg-sky-50"
+   597→                                  onClick={() => openTxnDialog({ material: m, type: 'Issue' })}
+   598→                                  title="Issue"
+   599→                                >
+   600→                                  <ArrowUpFromLine className="h-4 w-4" />
+   601→                                </Button>
+   602→                                <Button
+   603→                                  size="icon"
+   604→                                  variant="ghost"
+   605→                                  className="h-8 w-8 text-amber-600 hover:bg-amber-50"
+   606→                                  onClick={() => openTxnDialog({ material: m, type: 'Return' })}
+   607→                                  title="Return"
+   608→                                >
+   609→                                  <ArrowIn className="h-4 w-4" />
+   610→                                </Button>
+   611→                                <Button
+   612→                                  size="icon"
+   613→                                  variant="ghost"
+   614→                                  className="h-8 w-8 hover:bg-slate-100"
+   615→                                  onClick={() => openEditMaterial(m)}
+   616→                                  title="Edit"
+   617→                                >
+   618→                                  <Pencil className="h-4 w-4" />
+   619→                                </Button>
+   620→                                <Button
+   621→                                  size="icon"
+   622→                                  variant="ghost"
+   623→                                  className="h-8 w-8 text-red-600 hover:bg-red-50"
+   624→                                  onClick={() => setDeleteId(m.id)}
+   625→                                  title="Delete"
+   626→                                >
+   627→                                  <Trash2 className="h-4 w-4" />
+   628→                                </Button>
+   629→                              </div>
+   630→                            </TableCell>
+   631→                          </TableRow>
+   632→                        )
+   633→                      })
+   634→                    )}
+   635→                  </TableBody>
+   636→                </Table>
+   637→              </ScrollArea>
+   638→            </CardContent>
+   639→          </Card>
+   640→        </TabsContent>
+   641→
+   642→        {/* Transactions tab */}
+   643→        <TabsContent value="transactions" className="space-y-4">
+   644→          <Card className="shadow-sm border-border/60">
+   645→            <CardContent className="p-4">
+   646→              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+   647→                <div>
+   648→                  <Label className="mb-1.5 text-xs text-muted-foreground uppercase tracking-wide">Material</Label>
+   649→                  <Select value={txnMaterialFilter} onValueChange={setTxnMaterialFilter}>
+   650→                    <SelectTrigger className="w-full">
+   651→                      <SelectValue placeholder="All materials" />
+   652→                    </SelectTrigger>
+   653→                    <SelectContent>
+   654→                      <SelectItem value="all">All Materials</SelectItem>
+   655→                      {materials.map((m) => (
+   656→                        <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+   657→                      ))}
+   658→                    </SelectContent>
+   659→                  </Select>
+   660→                </div>
+   661→                <div>
+   662→                  <Label className="mb-1.5 text-xs text-muted-foreground uppercase tracking-wide">Project</Label>
+   663→                  <Select value={txnProjectFilter} onValueChange={setTxnProjectFilter}>
+   664→                    <SelectTrigger className="w-full">
+   665→                      <SelectValue placeholder="All projects" />
+   666→                    </SelectTrigger>
+   667→                    <SelectContent>
+   668→                      <SelectItem value="all">All Projects</SelectItem>
+   669→                      {projects.map((p) => (
+   670→                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+   671→                      ))}
+   672→                    </SelectContent>
+   673→                  </Select>
+   674→                </div>
+   675→                <div>
+   676→                  <Label className="mb-1.5 text-xs text-muted-foreground uppercase tracking-wide">Type</Label>
+   677→                  <Select value={txnTypeFilter} onValueChange={setTxnTypeFilter}>
+   678→                    <SelectTrigger className="w-full">
+   679→                      <SelectValue placeholder="All types" />
+   680→                    </SelectTrigger>
+   681→                    <SelectContent>
+   682→                      <SelectItem value="all">All Types</SelectItem>
+   683→                      <SelectItem value="Add">Add</SelectItem>
+   684→                      <SelectItem value="Issue">Issue</SelectItem>
+   685→                      <SelectItem value="Return">Return</SelectItem>
+   686→                    </SelectContent>
+   687→                  </Select>
+   688→                </div>
+   689→              </div>
+   690→            </CardContent>
+   691→          </Card>
+   692→
+   693→          <Card className="shadow-sm border-border/60">
+   694→            <CardHeader className="pb-3">
+   695→              <CardTitle className="text-base font-semibold flex items-center gap-2">
+   696→                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-100 text-violet-700">
+   697→                  <ArrowLeftRight className="h-4 w-4" />
+   698→                </span>
+   699→                Material Transactions
+   700→              </CardTitle>
+   701→              <CardDescription className="text-xs pl-9">
+   702→                Stock movements — adds, issues and returns
+   703→              </CardDescription>
+   704→            </CardHeader>
+   705→            <CardContent className="px-0 pb-0">
+   706→              <ScrollArea className="max-h-[500px] w-full">
+   707→                <Table>
+   708→                  <TableHeader className="sticky top-0 bg-card z-10">
+   709→                    <TableRow>
+   710→                      <TableHead className="min-w-[110px]">Date</TableHead>
+   711→                      <TableHead className="min-w-[180px]">Material</TableHead>
+   712→                      <TableHead className="min-w-[90px]">Type</TableHead>
+   713→                      <TableHead className="text-right min-w-[80px]">Qty</TableHead>
+   714→                      <TableHead className="min-w-[160px]">Project</TableHead>
+   715→                      <TableHead className="min-w-[200px]">Remarks</TableHead>
+   716→                    </TableRow>
+   717→                  </TableHeader>
+   718→                  <TableBody>
+   719→                    {loadingTxns && !txnData ? (
+   720→                      <TableRow>
+   721→                        <TableCell colSpan={6} className="py-6">
+   722→                          <Skeleton className="h-10 w-full" />
+   723→                        </TableCell>
+   724→                      </TableRow>
+   725→                    ) : filteredTxns.length === 0 ? (
+   726→                      <TableRow>
+   727→                        <TableCell colSpan={6} className="p-0">
+   728→                          <EmptyState
+   729→                            icon={<ArrowLeftRight className="h-6 w-6" />}
+   730→                            title="No transactions match the current filters"
+   731→                            description="Try clearing filters or record a new stock movement."
+   732→                          />
+   733→                        </TableCell>
+   734→                      </TableRow>
+   735→                    ) : (
+   736→                      filteredTxns.map((t) => (
+   737→                        <TableRow key={t.id}>
+   738→                          <TableCell className="text-slate-700 whitespace-nowrap">{formatDate(t.date)}</TableCell>
+   739→                          <TableCell className="font-medium text-slate-900">
+   740→                            {t.material?.name || '—'}
+   741→                          </TableCell>
+   742→                          <TableCell><TransactionTypeBadge type={t.type} /></TableCell>
+   743→                          <TableCell className="text-right tabular-nums font-semibold text-slate-900">
+   744→                            {formatQty(t.qty)}
+   745→                          </TableCell>
+   746→                          <TableCell className="text-slate-600 text-sm">{t.project?.name || '—'}</TableCell>
+   747→                          <TableCell className="text-muted-foreground text-xs max-w-xs truncate">
+   748→                            {t.remarks || '—'}
+   749→                          </TableCell>
+   750→                        </TableRow>
+   751→                      ))
+   752→                    )}
+   753→                  </TableBody>
+   754→                </Table>
+   755→              </ScrollArea>
+   756→            </CardContent>
+   757→          </Card>
+   758→        </TabsContent>
+   759→      </Tabs>
+   760→
+   761→      {/* Material usage chart */}
+   762→      <Card className="shadow-sm border-border/60">
+   763→        <CardHeader className="pb-2">
+   764→          <CardTitle className="text-base font-semibold flex items-center gap-2">
+   765→            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-100 text-violet-700">
+   766→              <BarChart3 className="h-4 w-4" />
+   767→            </span>
+   768→            Material Usage — Last 30 Days
+   769→          </CardTitle>
+   770→          <CardDescription className="text-xs pl-9">
+   771→            Total quantity added, issued and returned per material (units: qty)
+   772→          </CardDescription>
+   773→        </CardHeader>
+   774→        <CardContent>
+   775→          {usageChart.length === 0 ? (
+   776→            <EmptyState
+   777→              icon={<BarChart3 className="h-6 w-6" />}
+   778→              title="No material movements in the last 30 days"
+   779→              description="Once you record stock transactions, usage trends will appear here."
+   780→              className="h-[280px]"
+   781→            />
+   782→          ) : (
+   783→            <ResponsiveContainer width="100%" height={280}>
+   784→              <BarChart data={usageChart} margin={{ top: 8, right: 8, left: 8, bottom: 30 }}>
+   785→                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+   786→                <XAxis
+   787→                  dataKey="name"
+   788→                  tick={{ fontSize: 10, fill: '#64748b' }}
+   789→                  interval={0}
+   790→                  angle={-20}
+   791→                  textAnchor="end"
+   792→                  height={60}
+   793→                />
+   794→                <YAxis
+   795→                  tick={{ fontSize: 11, fill: '#64748b' }}
+   796→                  label={{ value: 'qty', angle: -90, position: 'insideLeft', style: { fontSize: 11, fill: '#94a3b8' } }}
+   797→                />
+   798→                <RTooltip contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }} />
+   799→                <Legend iconType="circle" wrapperStyle={{ fontSize: 11 }} />
+   800→                <Bar dataKey="added" name="Added" fill="#10b981" radius={[4, 4, 0, 0]} />
+   801→                <Bar dataKey="issued" name="Issued" fill="#0ea5e9" radius={[4, 4, 0, 0]} />
+   802→                <Bar dataKey="returned" name="Returned" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+   803→              </BarChart>
+   804→            </ResponsiveContainer>
+   805→          )}
+   806→        </CardContent>
+   807→      </Card>
+   808→
+   809→      {/* Add/Edit Material Dialog */}
+   810→      <Dialog
+   811→        open={materialDialog.open}
+   812→        onOpenChange={(o) => setMaterialDialog((s) => ({ ...s, open: o }))}
+   813→      >
+   814→        <DialogContent className="w-full sm:max-w-lg max-h-[90vh] overflow-y-auto ayk-scrollbar">
+   815→          <DialogHeader>
+   816→            <DialogTitle>
+   817→              {materialDialog.mode === 'add' ? 'Add New Material' : 'Edit Material'}
+   818→            </DialogTitle>
+   819→            <DialogDescription>
+   820→              {materialDialog.mode === 'add'
+   821→                ? 'Register a new solar material in the inventory.'
+   822→                : 'Update the material details below.'}
+   823→            </DialogDescription>
+   824→          </DialogHeader>
+   825→          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   826→            <div className="sm:col-span-2">
+   827→              <Label htmlFor="m-name">Name *</Label>
+   828→              <Input
+   829→                id="m-name"
+   830→                value={mForm.name}
+   831→                onChange={(e) => setMForm((s) => ({ ...s, name: e.target.value }))}
+   832→                placeholder="e.g. Mono 450W Solar Panel"
+   833→                className="mt-1.5"
+   834→              />
+   835→            </div>
+   836→            <div>
+   837→              <Label htmlFor="m-category">Category</Label>
+   838→              <Select
+   839→                value={mForm.category}
+   840→                onValueChange={(v) => setMForm((s) => ({ ...s, category: v }))}
+   841→              >
+   842→                <SelectTrigger className="w-full mt-1.5">
+   843→                  <SelectValue />
+   844→                </SelectTrigger>
+   845→                <SelectContent>
+   846→                  {MATERIAL_CATEGORIES.map((c) => (
+   847→                    <SelectItem key={c} value={c}>{MATERIAL_CATEGORY_LABELS[c]}</SelectItem>
+   848→                  ))}
+   849→                </SelectContent>
+   850→              </Select>
+   851→            </div>
+   852→            <div>
+   853→              <Label htmlFor="m-unit">Unit</Label>
+   854→              <Input
+   855→                id="m-unit"
+   856→                value={mForm.unit}
+   857→                onChange={(e) => setMForm((s) => ({ ...s, unit: e.target.value }))}
+   858→                placeholder="pcs / meters / rolls"
+   859→                className="mt-1.5"
+   860→              />
+   861→            </div>
+   862→            <div>
+   863→              <Label htmlFor="m-stock">Stock Quantity</Label>
+   864→              <Input
+   865→                id="m-stock"
+   866→                type="number"
+   867→                min={0}
+   868→                value={mForm.stockQty}
+   869→                onChange={(e) => setMForm((s) => ({ ...s, stockQty: Number(e.target.value) }))}
+   870→                className="mt-1.5"
+   871→              />
+   872→            </div>
+   873→            <div>
+   874→              <Label htmlFor="m-min">Minimum Stock Level</Label>
+   875→              <Input
+   876→                id="m-min"
+   877→                type="number"
+   878→                min={0}
+   879→                value={mForm.minStockLevel}
+   880→                onChange={(e) => setMForm((s) => ({ ...s, minStockLevel: Number(e.target.value) }))}
+   881→                className="mt-1.5"
+   882→              />
+   883→            </div>
+   884→            <div>
+   885→              <Label htmlFor="m-price">Unit Price (S$)</Label>
+   886→              <Input
+   887→                id="m-price"
+   888→                type="number"
+   889→                min={0}
+   890→                step={0.01}
+   891→                value={mForm.unitPrice}
+   892→                onChange={(e) => setMForm((s) => ({ ...s, unitPrice: Number(e.target.value) }))}
+   893→                className="mt-1.5"
+   894→              />
+   895→            </div>
+   896→            <div>
+   897→              <Label htmlFor="m-supplier">Supplier</Label>
+   898→              <Input
+   899→                id="m-supplier"
+   900→                value={mForm.supplier}
+   901→                onChange={(e) => setMForm((s) => ({ ...s, supplier: e.target.value }))}
+   902→                placeholder="Supplier name"
+   903→                className="mt-1.5"
+   904→              />
+   905→            </div>
+   906→          </div>
+   907→          <DialogFooter>
+   908→            <Button variant="outline" onClick={() => setMaterialDialog({ open: false, mode: 'add' })}>
+   909→              Cancel
+   910→            </Button>
+   911→            <Button
+   912→              onClick={submitMaterial}
+   913→              disabled={savingMaterial}
+   914→              className="bg-violet-600 hover:bg-violet-700 text-white"
+   915→            >
+   916→              {savingMaterial ? 'Saving…' : materialDialog.mode === 'add' ? 'Add Material' : 'Save Changes'}
+   917→            </Button>
+   918→          </DialogFooter>
+   919→        </DialogContent>
+   920→      </Dialog>
+   921→
+   922→      {/* Transaction Dialog (Add Stock / Issue / Return / New Transaction) */}
+   923→      <Dialog
+   924→        open={txnDialog.open}
+   925→        onOpenChange={(o) => setTxnDialog((s) => ({ ...s, open: o }))}
+   926→      >
+   927→        <DialogContent className="w-full sm:max-w-lg max-h-[90vh] overflow-y-auto ayk-scrollbar">
+   928→          <DialogHeader>
+   929→            <DialogTitle>
+   930→              {txnDialog.material
+   931→                ? `${txnDialog.type || 'New'} — ${txnDialog.material.name}`
+   932→                : 'New Material Transaction'}
+   933→            </DialogTitle>
+   934→            <DialogDescription>
+   935→              Record a stock movement. Stock levels will update automatically.
+   936→            </DialogDescription>
+   937→          </DialogHeader>
+   938→          <div className="space-y-4">
+   939→            {!txnDialog.material && (
+   940→              <div>
+   941→                <Label htmlFor="t-material">Material *</Label>
+   942→                <Select
+   943→                  value={tForm.materialId}
+   944→                  onValueChange={(v) => setTForm((s) => ({ ...s, materialId: v }))}
+   945→                >
+   946→                  <SelectTrigger className="w-full mt-1.5">
+   947→                    <SelectValue placeholder="Select material" />
+   948→                  </SelectTrigger>
+   949→                  <SelectContent>
+   950→                    {materials.map((m) => (
+   951→                      <SelectItem key={m.id} value={m.id}>
+   952→                        {m.name} ({formatQty(m.stockQty)} {m.unit})
+   953→                      </SelectItem>
+   954→                    ))}
+   955→                  </SelectContent>
+   956→                </Select>
+   957→              </div>
+   958→            )}
+   959→            <div>
+   960→              <Label htmlFor="t-type">Transaction Type</Label>
+   961→              <Select
+   962→                value={tForm.type}
+   963→                onValueChange={(v) => setTForm((s) => ({ ...s, type: v as 'Add' | 'Issue' | 'Return' }))}
+   964→                disabled={!!txnDialog.material && !!txnDialog.type}
+   965→              >
+   966→                <SelectTrigger className="w-full mt-1.5">
+   967→                  <SelectValue />
+   968→                </SelectTrigger>
+   969→                <SelectContent>
+   970→                  <SelectItem value="Add">Add (Stock In)</SelectItem>
+   971→                  <SelectItem value="Issue">Issue (Stock Out)</SelectItem>
+   972→                  <SelectItem value="Return">Return (Stock Back)</SelectItem>
+   973→                </SelectContent>
+   974→              </Select>
+   975→            </div>
+   976→            <div>
+   977→              <Label htmlFor="t-qty">Quantity *</Label>
+   978→              <Input
+   979→                id="t-qty"
+   980→                type="number"
+   981→                min={1}
+   982→                value={tForm.qty || ''}
+   983→                onChange={(e) => setTForm((s) => ({ ...s, qty: Number(e.target.value) }))}
+   984→                className="mt-1.5"
+   985→              />
+   986→            </div>
+   987→            <div>
+   988→              <Label htmlFor="t-project">Project</Label>
+   989→              <Select
+   990→                value={tForm.projectId}
+   991→                onValueChange={(v) => setTForm((s) => ({ ...s, projectId: v }))}
+   992→              >
+   993→                <SelectTrigger className="w-full mt-1.5">
+   994→                  <SelectValue placeholder="No project" />
+   995→                </SelectTrigger>
+   996→                <SelectContent>
+   997→                  <SelectItem value="none">No Project</SelectItem>
+   998→                  {projects.map((p) => (
+   999→                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+  1000→                  ))}
+  1001→                </SelectContent>
+  1002→              </Select>
+  1003→            </div>
+  1004→            <div>
+  1005→              <Label htmlFor="t-remarks">Remarks</Label>
+  1006→              <Input
+  1007→                id="t-remarks"
+  1008→                value={tForm.remarks}
+  1009→                onChange={(e) => setTForm((s) => ({ ...s, remarks: e.target.value }))}
+  1010→                placeholder="Optional notes"
+  1011→                className="mt-1.5"
+  1012→              />
+  1013→            </div>
+  1014→          </div>
+  1015→          <DialogFooter>
+  1016→            <Button variant="outline" onClick={() => setTxnDialog({ open: false })}>
+  1017→              Cancel
+  1018→            </Button>
+  1019→            <Button
+  1020→              onClick={submitTxn}
+  1021→              disabled={savingTxn}
+  1022→              className="bg-violet-600 hover:bg-violet-700 text-white"
+  1023→            >
+  1024→              {savingTxn ? 'Saving…' : 'Record Transaction'}
+  1025→            </Button>
+  1026→          </DialogFooter>
+  1027→        </DialogContent>
+  1028→      </Dialog>
+  1029→
+  1030→      {/* Delete confirmation */}
+  1031→      <AlertDialog open={!!deleteId} onOpenChange={(o) => !o && setDeleteId(null)}>
+  1032→        <AlertDialogContent>
+  1033→          <AlertDialogHeader>
+  1034→            <AlertDialogTitle>Delete Material?</AlertDialogTitle>
+  1035→            <AlertDialogDescription>
+  1036→              This will permanently delete the material and all its transaction records. This action cannot be undone.
+  1037→            </AlertDialogDescription>
+  1038→          </AlertDialogHeader>
+  1039→          <AlertDialogFooter>
+  1040→            <AlertDialogCancel>Cancel</AlertDialogCancel>
+  1041→            <AlertDialogAction
+  1042→              onClick={confirmDelete}
+  1043→              className="bg-red-600 hover:bg-red-700 text-white"
+  1044→            >
+  1045→              Delete
+  1046→            </AlertDialogAction>
+  1047→          </AlertDialogFooter>
+  1048→        </AlertDialogContent>
+  1049→      </AlertDialog>
+  1050→    </div>
+  1051→  )
+  1052→}
+  1053→

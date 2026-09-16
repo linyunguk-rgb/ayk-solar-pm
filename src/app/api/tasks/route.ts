@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getSessionUser, tenantWhere } from '@/lib/auth'
 
 export async function GET(req: NextRequest) {
+  const user = await getSessionUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const tw = await tenantWhere()
   const { searchParams } = new URL(req.url)
   const projectId = searchParams.get('projectId')
   const status = searchParams.get('status')
   const assignedToId = searchParams.get('assignedToId')
 
-  const where: any = {}
+  const where: any = { ...tw }
   if (projectId && projectId !== 'all') where.projectId = projectId
   if (status && status !== 'all') where.status = status
   if (assignedToId) where.assignedToId = assignedToId
@@ -29,11 +33,22 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const user = await getSessionUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const body = await req.json()
   const { title, description, projectId, assignedToId, assignedToName, team, priority, status, progress, startDate, dueDate, remarks } = body
 
   if (!title || !dueDate) {
     return NextResponse.json({ error: 'Title and due date required' }, { status: 400 })
+  }
+
+  // If projectId is provided, verify it belongs to tenant
+  if (projectId) {
+    const project = await db.project.findUnique({ where: { id: projectId }, select: { tenantId: true } })
+    if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+    if (!user.isMasterAdmin && project.tenantId !== user.tenantId) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
   }
 
   const task = await db.task.create({
@@ -49,6 +64,7 @@ export async function POST(req: NextRequest) {
       startDate: new Date(startDate || Date.now()),
       dueDate: new Date(dueDate),
       remarks: remarks || null,
+      tenantId: user.tenantId,
     },
     include: { project: true, assignedTo: true },
   })

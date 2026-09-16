@@ -1,5 +1,5 @@
-// AYK PTE LTD - Solar Project Management System
-// Prisma schema
+// AYK PTE LTD - Solar Project Management System (Multi-tenant SaaS)
+// Prisma schema — PostgreSQL (Supabase)
 
 generator client {
   provider = "prisma-client-js"
@@ -10,17 +10,70 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ─── Tenant (Company) ──────────────────────────────────────────
+model Tenant {
+  id          String   @id @default(cuid())
+  name        String
+  logo        String?
+  address     String?
+  uen         String?
+  plan        String   @default("demo") // demo | enterprise
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users       User[]
+  projects    Project[]
+  tasks       Task[]
+  workers     Worker[]
+  materials   Material[]
+  expenses    Expense[]
+  safetyChecklists SafetyChecklist[]
+  safetyIncidents SafetyIncident[]
+  documents   Document[]
+  notifications Notification[]
+  dailyProgress  DailyProgress[]
+  materialTransactions MaterialTransaction[]
+  accessCodes  AccessCode[]
+
+  @@map("tenants")
+}
+
+// ─── AccessCode ─────────────────────────────────────────────────
+model AccessCode {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  label       String?
+  plan        String   @default("enterprise")
+  maxUses     Int      @default(1)
+  usedCount   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenantId    String?
+  tenant      Tenant?  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@map("access_codes")
+}
+
+// ─── User ───────────────────────────────────────────────────────
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String
-  password  String
-  role      String   @default("Worker") // Admin, ProjectManager, SiteSupervisor, SafetyOfficer, Engineer, StoreOfficer, Worker
-  avatar    String?
-  phone     String?
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id             String   @id @default(cuid())
+  email          String   @unique
+  name           String
+  password       String
+  role           String   @default("Worker")
+  avatar         String?
+  phone          String?
+  isActive       Boolean  @default(true)
+  isTenantAdmin  Boolean  @default(false)
+  isMasterAdmin  Boolean  @default(false)
+  setupComplete  Boolean  @default(true)
+  tenantId       String?
+  tenant         Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   managedProjects Project[] @relation("ProjectManager")
   tasks           Task[]
@@ -28,18 +81,21 @@ model User {
   safetyChecklists SafetyChecklist[]
   safetyIncidents SafetyIncident[] @relation("IncidentReporter")
   documents       Document[] @relation("DocUploader")
+
+  @@map("users")
 }
 
+// ─── Project ────────────────────────────────────────────────────
 model Project {
   id              String   @id @default(cuid())
-  code            String   @unique
+  code            String
   name            String
   location        String
   client          String?
   totalPanels     Int      @default(0)
   installedPanels Int      @default(0)
-  capacity        String?  // e.g. "2.5 MWp"
-  status          String   @default("Active") // Active, Completed, Delayed, OnHold
+  capacity        String?
+  status          String   @default("Active")
   startDate       DateTime
   endDate         DateTime
   budget          Float    @default(0)
@@ -47,6 +103,8 @@ model Project {
   managerId       String?
   manager         User?    @relation("ProjectManager", fields: [managerId], references: [id])
   description     String?
+  tenantId        String?
+  tenant          Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   stages          ProjectStage[]
   dailyProgress   DailyProgress[]
@@ -61,22 +119,26 @@ model Project {
 
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+
+  @@map("projects")
 }
 
 model ProjectStage {
   id          String   @id @default(cuid())
   projectId    String
   project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  name        String   // Survey, Design, Procurement, Installation, Testing, Handover
+  name        String
   order       Int      @default(0)
   plannedPct  Float    @default(0)
   actualPct   Float    @default(0)
   weight      Float    @default(16.66)
-  status      String   @default("NotStarted") // NotStarted, InProgress, Completed, Delayed
+  status      String   @default("NotStarted")
   startDate   DateTime?
   endDate     DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@map("project_stages")
 }
 
 model DailyProgress {
@@ -88,17 +150,21 @@ model DailyProgress {
   totalInstalled  Int      @default(0)
   manHours        Float    @default(0)
   workers         Int      @default(0)
-  materialsUsed   String?  // JSON string
-  equipmentUsed   String?  // JSON string
+  materialsUsed   String?
+  equipmentUsed   String?
   workCompleted   String?
   workPending     String?
-  siteStatus      String   @default("Normal") // Normal, Delay, Issue, Halt
+  siteStatus      String   @default("Normal")
   remarks         String?
-  photoUrls       String?  // JSON string
+  photoUrls       String?
   gpsLocation     String?
   submittedById   String?
   submittedBy     User?    @relation("ProgressSubmitter", fields: [submittedById], references: [id])
+  tenantId        String?
+  tenant          Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   createdAt       DateTime @default(now())
+
+  @@map("daily_progress")
 }
 
 model Task {
@@ -111,31 +177,39 @@ model Task {
   assignedTo      User?    @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
   assignedToName  String?
   team            String?
-  priority        String   @default("Medium") // Low, Medium, High, Critical
-  status          String   @default("Todo") // Todo, InProgress, Completed, Delayed
+  priority        String   @default("Medium")
+  status          String   @default("Todo")
   progress        Float    @default(0)
   startDate       DateTime
   dueDate         DateTime
   completedAt     DateTime?
   remarks         String?
+  tenantId        String?
+  tenant          Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+
+  @@map("tasks")
 }
 
 model Worker {
   id          String   @id @default(cuid())
   name        String
-  employeeId  String   @unique
-  role        String   // e.g. Solar Installer, Electrician, Foreman
+  employeeId  String
+  role        String
   team        String?
   projectId   String?
   project     Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
   phone       String?
-  status      String   @default("Active") // Active, OnLeave, Inactive
-  skillLevel  String   @default("Intermediate") // Junior, Intermediate, Senior
+  status      String   @default("Active")
+  skillLevel  String   @default("Intermediate")
+  tenantId    String?
+  tenant      Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   attendance  Attendance[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@map("workers")
 }
 
 model Attendance {
@@ -143,26 +217,32 @@ model Attendance {
   workerId    String
   worker      Worker   @relation(fields: [workerId], references: [id], onDelete: Cascade)
   date        DateTime
-  checkIn      DateTime?
-  checkOut     DateTime?
-  workingHours Float    @default(0)
+  checkIn     DateTime?
+  checkOut    DateTime?
+  workingHours Float   @default(0)
   overtime    Float    @default(0)
-  status      String   @default("Present") // Present, Absent, Leave, HalfDay
+  status      String   @default("Present")
   createdAt   DateTime @default(now())
+
+  @@map("attendance")
 }
 
 model Material {
   id          String   @id @default(cuid())
   name        String
-  category    String   // SolarPanels, DCCables, ACCables, MountingRails, Inverters, MC4Connectors, Bolts, Other
-  unit        String   @default("pcs") // pcs, meters, rolls, kg
+  category    String
+  unit        String   @default("pcs")
   stockQty    Float    @default(0)
   minStockLevel Float  @default(0)
   unitPrice   Float    @default(0)
   supplier    String?
+  tenantId    String?
+  tenant      Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   transactions MaterialTransaction[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@map("materials")
 }
 
 model MaterialTransaction {
@@ -171,13 +251,17 @@ model MaterialTransaction {
   material    Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
   projectId   String?
   project     Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  type        String   // Add, Issue, Return, Transfer
+  type        String
   qty         Float
   fromProject String?
   toProject   String?
   remarks     String?
   date        DateTime
+  tenantId    String?
+  tenant      Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   createdAt   DateTime @default(now())
+
+  @@map("material_transactions")
 }
 
 model Expense {
@@ -185,14 +269,18 @@ model Expense {
   date        DateTime
   projectId   String?
   project     Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  category    String   // Tools, Transport, Accommodation, Fuel, Materials, Labour, Miscellaneous
+  category    String
   description String
   amount      Float
   paidBy      String?
-  approvalStatus String @default("Pending") // Pending, Approved, Rejected
+  approvalStatus String @default("Pending")
   receiptUrl  String?
+  tenantId    String?
+  tenant      Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@map("expenses")
 }
 
 model SafetyChecklist {
@@ -200,7 +288,7 @@ model SafetyChecklist {
   date        DateTime
   projectId   String?
   project     Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  checklistType String @default("PPE") // PPE, Toolbox, Inspection
+  checklistType String @default("PPE")
   helmet      Boolean  @default(false)
   safetyShoes Boolean  @default(false)
   gloves      Boolean  @default(false)
@@ -214,7 +302,11 @@ model SafetyChecklist {
   location    String?
   remarks     String?
   compliancePct Float @default(0)
+  tenantId    String?
+  tenant      Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   createdAt   DateTime @default(now())
+
+  @@map("safety_checklists")
 }
 
 model SafetyIncident {
@@ -222,23 +314,27 @@ model SafetyIncident {
   date        DateTime
   projectId   String?
   project     Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  type        String   // Incident, NearMiss, UnsafeCondition
-  severity    String   @default("Low") // Low, Medium, High, Critical
+  type        String
+  severity    String   @default("Low")
   description String
   location    String?
   reportedById String?
   reportedBy   User?   @relation("IncidentReporter", fields: [reportedById], references: [id], onDelete: SetNull)
   reportedByName String?
-  status      String   @default("Open") // Open, Investigating, Closed
+  status      String   @default("Open")
   actionTaken String?
+  tenantId    String?
+  tenant      Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@map("safety_incidents")
 }
 
 model Document {
   id          String   @id @default(cuid())
   name        String
-  category    String   // Drawings, Permits, MethodStatements, RiskAssessments, Certificates, Inspection, Photos, Reports
+  category    String
   projectId   String?
   project     Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
   fileUrl     String
@@ -248,17 +344,25 @@ model Document {
   uploadedBy   User?   @relation("DocUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
   uploadedByName String?
   description String?
+  tenantId    String?
+  tenant      Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   createdAt   DateTime @default(now())
+
+  @@map("documents")
 }
 
 model Notification {
   id          String   @id @default(cuid())
-  type        String   // DelayedProject, LowStock, OverdueTask, SafetyIncident, PendingApproval, DailyProgress
+  type        String
   title       String
   message     String
   projectId   String?
   project     Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
   isRead      Boolean  @default(false)
-  severity    String   @default("info") // info, warning, critical
+  severity    String   @default("info")
+  tenantId    String?
+  tenant      Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   createdAt   DateTime @default(now())
+
+  @@map("notifications")
 }

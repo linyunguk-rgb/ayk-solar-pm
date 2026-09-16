@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Sun, HardHat, ShieldCheck, Wrench, Package, Cog, ChevronRight, Loader2, AlertCircle } from 'lucide-react'
+import { Sun, HardHat, ShieldCheck, Wrench, Package, Cog, ChevronRight, Loader2, AlertCircle, ArrowLeft } from 'lucide-react'
 import { ROLES, APP_NAME, APP_TAGLINE } from '@/lib/constants'
 
 interface DemoUser {
@@ -29,6 +29,7 @@ const roleIcons: Record<string, React.ReactNode> = {
 
 export function LoginPage() {
   const setUser = useAppStore(s => s.setUser)
+  const setEntryMode = useAppStore(s => s.setEntryMode)
   const [email, setEmail] = useState('admin@ayk.com.sg')
   const [password, setPassword] = useState('admin123')
   const [loading, setLoading] = useState(false)
@@ -126,6 +127,13 @@ export function LoginPage() {
 
           <Card className="border-border/60 shadow-xl">
             <CardHeader className="space-y-1 pb-4">
+              <button
+                type="button"
+                onClick={() => setEntryMode('landing')}
+                className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-emerald-700"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" /> Back to start
+              </button>
               <CardTitle className="text-2xl font-bold">Welcome back</CardTitle>
               <CardDescription>Sign in to your AYK account to continue</CardDescription>
             </CardHeader>

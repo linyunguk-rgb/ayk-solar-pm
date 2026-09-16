@@ -3,7 +3,14 @@ import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const user = await getSessionUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { id } = await params
+  const project = await db.project.findUnique({ where: { id }, select: { tenantId: true } })
+  if (!project) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!user.isMasterAdmin && project.tenantId !== user.tenantId) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
   const stages = await db.projectStage.findMany({ where: { projectId: id }, orderBy: { order: 'asc' } })
   return NextResponse.json({ stages })
 }
@@ -13,6 +20,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const user = await getSessionUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { id } = await params
+  const project = await db.project.findUnique({ where: { id }, select: { tenantId: true } })
+  if (!project) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!user.isMasterAdmin && project.tenantId !== user.tenantId) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
   const body = await req.json()
   // body.stages = [{ id, name, plannedPct, actualPct, weight, status, startDate, endDate }]
   if (Array.isArray(body.stages)) {

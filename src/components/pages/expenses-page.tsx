@@ -17,10 +17,10 @@ import {
 } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Table, TableHeader, TableBody, TableHead, TableRow, TableCell,
 } from '@/components/ui/table'
+import { HorizontalScrollTable } from '@/components/shared/horizontal-scroll-table'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog'
@@ -663,7 +663,7 @@ export function ExpensesPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="px-0 pb-0">
-          <ScrollArea className="max-h-[560px] w-full">
+          <HorizontalScrollTable minWidth="1100px" maxHeight="560px">
             <Table>
               <TableHeader className="sticky top-0 bg-card z-10">
                 <TableRow>
@@ -761,7 +761,7 @@ export function ExpensesPage() {
                 )}
               </TableBody>
             </Table>
-          </ScrollArea>
+          </HorizontalScrollTable>
         </CardContent>
       </Card>
 

@@ -11,8 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { HorizontalScrollTable } from '@/components/shared/horizontal-scroll-table'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import {
   TrendingUp, Target, Calendar, Plus, AlertTriangle, Gauge, Activity,
@@ -353,7 +353,7 @@ export function ProgressPage() {
               description="Submit daily progress entries to populate this table."
             />
           ) : (
-            <ScrollArea className="max-h-[500px] ayk-scrollbar">
+            <HorizontalScrollTable minWidth="900px" maxHeight="500px">
               <Table className="min-w-[800px]">
                 <TableHeader className="sticky top-0 bg-card z-10">
                   <TableRow>
@@ -382,7 +382,7 @@ export function ProgressPage() {
                   ))}
                 </TableBody>
               </Table>
-            </ScrollArea>
+            </HorizontalScrollTable>
           )}
         </CardContent>
       </Card>

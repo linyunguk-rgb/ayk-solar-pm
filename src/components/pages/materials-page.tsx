@@ -18,10 +18,10 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Table, TableHeader, TableBody, TableHead, TableRow, TableCell,
 } from '@/components/ui/table'
+import { HorizontalScrollTable } from '@/components/shared/horizontal-scroll-table'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog'
@@ -522,7 +522,7 @@ export function MaterialsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="px-0 pb-0">
-              <ScrollArea className="max-h-[500px] w-full">
+              <HorizontalScrollTable minWidth="1100px" maxHeight="500px">
                 <Table>
                   <TableHeader className="sticky top-0 bg-card z-10">
                     <TableRow>
@@ -634,7 +634,7 @@ export function MaterialsPage() {
                     )}
                   </TableBody>
                 </Table>
-              </ScrollArea>
+              </HorizontalScrollTable>
             </CardContent>
           </Card>
         </TabsContent>
@@ -703,7 +703,7 @@ export function MaterialsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="px-0 pb-0">
-              <ScrollArea className="max-h-[500px] w-full">
+              <HorizontalScrollTable minWidth="900px" maxHeight="500px">
                 <Table>
                   <TableHeader className="sticky top-0 bg-card z-10">
                     <TableRow>
@@ -752,14 +752,12 @@ export function MaterialsPage() {
                     )}
                   </TableBody>
                 </Table>
-              </ScrollArea>
+              </HorizontalScrollTable>
             </CardContent>
           </Card>
-        </TabsContent>
-      </Tabs>
 
-      {/* Material usage chart */}
-      <Card className="shadow-sm border-border/60">
+          {/* Material usage chart — inside transactions TabsContent, after the transactions table */}
+          <Card className="shadow-sm border-border/60">
         <CardHeader className="pb-2">
           <CardTitle className="text-base font-semibold flex items-center gap-2">
             <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-100 text-violet-700">
@@ -805,6 +803,8 @@ export function MaterialsPage() {
           )}
         </CardContent>
       </Card>
+        </TabsContent>
+      </Tabs>
 
       {/* Add/Edit Material Dialog */}
       <Dialog

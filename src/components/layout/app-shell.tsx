@@ -1,13 +1,15 @@
 'use client'
-import { useEffect, lazy, Suspense } from 'react'
+import { useEffect, useState, lazy, Suspense } from 'react'
 import { useAppStore } from '@/store/app-store'
 import { Sidebar } from './sidebar'
 import { Topbar } from './topbar'
 import { MobileNav } from './mobile-nav'
 import { canAccess, type NavKey, ROLES, type RoleKey } from '@/lib/constants'
-import { LoginGate } from '@/components/login/login-gate'
+import { LandingPage } from '@/components/login/landing-page'
+import { EnterpriseEntryPage } from '@/components/login/enterprise-entry-page'
+import { LoginPage } from '@/components/login/login-page'
+import { DailyBackup } from '@/components/shared/daily-backup'
 
-// Lazy-load ALL pages so only the active page compiles at a time.
 const DashboardPage = lazy(() => import('@/components/pages/dashboard-page').then(m => ({ default: m.DashboardPage })))
 const ProjectsPage = lazy(() => import('@/components/pages/projects-page').then(m => ({ default: m.ProjectsPage })))
 const ProgressPage = lazy(() => import('@/components/pages/progress-page').then(m => ({ default: m.ProgressPage })))
@@ -22,6 +24,7 @@ const SettingsPage = lazy(() => import('@/components/pages/settings-page').then(
 const MobilePage = lazy(() => import('@/components/pages/mobile-page').then(m => ({ default: m.MobilePage })))
 const DailyEntryPage = lazy(() => import('@/components/pages/daily-entry-page').then(m => ({ default: m.DailyEntryPage })))
 const GuidePage = lazy(() => import('@/components/pages/guide-page').then(m => ({ default: m.GuidePage })))
+const MasterAdminPage = lazy(() => import('@/components/pages/master-admin-page').then(m => ({ default: m.MasterAdminPage })))
 
 function PageLoader() {
   return (
@@ -35,19 +38,59 @@ function PageLoader() {
 }
 
 export function AppShell() {
-  const { user, currentNav, setNav } = useAppStore()
+  const { user, currentNav, setNav, entryMode } = useAppStore()
+  const setUser = useAppStore(s => s.setUser)
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
 
-  // Redirect nav if user lacks permission
   useEffect(() => {
-    if (user && !canAccess(user.role as RoleKey, currentNav)) {
-      setNav('dashboard')
-    }
+    if (user && !canAccess(user.role as RoleKey, currentNav)) setNav('dashboard')
   }, [user, currentNav, setNav])
 
-  if (!user) return <LoginGate />
+  useEffect(() => {
+    fetch('/api/auth/me').then(r => r.json()).then(d => { if (d.user) setUser(d.user as any) }).catch(() => {})
+  }, [setUser])
+
+  // Scroll to top whenever the page changes
+  useEffect(() => {
+    if (!mounted) return
+    const main = document.querySelector('main')
+    if (main) main.scrollTo(0, 0)
+    window.scrollTo(0, 0)
+  }, [currentNav, mounted])
+
+  if (!mounted) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="h-8 w-8 rounded-full border-2 border-emerald-200 border-t-emerald-600 animate-spin" />
+      </div>
+    )
+  }
+
+  if (user?.isMasterAdmin && currentNav === 'dashboard') {
+    return (
+      <div className="min-h-screen bg-slate-50 flex">
+        <Sidebar />
+        <div className="flex-1 flex flex-col min-w-0 lg:pl-64">
+          <Topbar />
+          <main className="flex-1 p-4 sm:p-6 pb-24 lg:pb-6 min-w-0 max-w-[1600px] mx-auto w-full">
+            <Suspense fallback={<PageLoader />}><MasterAdminPage /></Suspense>
+          </main>
+        </div>
+        <MobileNav />
+      </div>
+    )
+  }
+
+  if (!user) {
+    if (entryMode === 'enterprise') return <EnterpriseEntryPage />
+    if (entryMode === 'demo') return <LoginPage />
+    return <LandingPage />
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 flex">
+      <DailyBackup />
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0 lg:pl-64">
         <Topbar />

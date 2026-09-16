@@ -21,8 +21,8 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { HorizontalScrollTable } from '@/components/shared/horizontal-scroll-table'
 import {
   ShieldAlert, ShieldCheck, AlertCircle, TriangleAlert, HardHat, Plus, FileText,
   MapPin, Calendar, User as UserIcon, ClipboardList, TrendingUp, BarChart3,
@@ -312,7 +312,7 @@ export function SafetyPage() {
                   }
                 />
               ) : (
-                <ScrollArea className="max-h-[500px]">
+                <HorizontalScrollTable minWidth="900px" maxHeight="500px">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -351,7 +351,7 @@ export function SafetyPage() {
                       })}
                     </TableBody>
                   </Table>
-                </ScrollArea>
+                </HorizontalScrollTable>
               )}
             </CardContent>
           </Card>

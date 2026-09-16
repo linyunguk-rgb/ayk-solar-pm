@@ -27,7 +27,7 @@ import {
 import {
   Table, TableHeader, TableBody, TableHead, TableRow, TableCell,
 } from '@/components/ui/table'
-import { ScrollArea } from '@/components/ui/scroll-area'
+import { HorizontalScrollTable } from '@/components/shared/horizontal-scroll-table'
 import {
   ListChecks, Plus, LayoutGrid, List, Filter, Pencil, Trash2, AlertTriangle, Search, X,
   CheckCircle2, Clock, Loader2, Flag,
@@ -739,7 +739,7 @@ function ListView({
       />
       <Card className="border-border/60 shadow-sm">
         <CardContent className="p-0">
-          <ScrollArea className="max-h-[500px]">
+          <HorizontalScrollTable minWidth="1000px" maxHeight="500px">
             <div className="min-w-[900px]">
               <Table>
                 <TableHeader className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur">
@@ -798,7 +798,7 @@ function ListView({
                 </TableBody>
               </Table>
             </div>
-          </ScrollArea>
+          </HorizontalScrollTable>
         </CardContent>
       </Card>
     </div>

@@ -1,7 +1,7 @@
 'use client'
 import { useState, useMemo, useRef } from 'react'
 import { useAppStore } from '@/store/app-store'
-import { useFetch, apiPost, apiDelete } from '@/hooks/use-fetch'
+import { useFetch, apiDelete } from '@/hooks/use-fetch'
 import { SectionHeader, SubSection } from '@/components/shared/section-header'
 import { StatCard } from '@/components/shared/stat-card'
 import { EmptyState } from '@/components/shared/empty-state'
@@ -350,27 +350,38 @@ export function DocumentsPage() {
 function PreviewBody({ doc }: { doc: any | null }) {
   if (!doc) return null
   const ft = (doc.fileType || '').toLowerCase()
+  // A "real" uploaded file is one whose fileUrl lives under /uploads/ — seeded demo docs use /documents/<slug>
+  const isRealUpload = (doc.url && doc.url.startsWith('blob:')) || (doc.fileUrl || '').startsWith('/uploads/')
+  const previewSrc = doc.url || (isRealUpload ? doc.fileUrl : null)
+
   if (ft.startsWith('image')) {
-    if (doc.url) {
+    if (previewSrc) {
       return (
         <div className="rounded-lg overflow-hidden border border-slate-200 bg-slate-50 flex items-center justify-center min-h-[260px]">
-          <img src={doc.url} alt={doc.name} className="max-h-[60vh] w-auto object-contain" />
+          <img src={previewSrc} alt={doc.name} className="max-h-[60vh] w-auto object-contain" />
         </div>
       )
     }
     return (
       <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-10 text-center text-sm text-muted-foreground">
         <ImageIcon className="h-10 w-10 mx-auto mb-2 text-slate-300" />
-        Preview not available for demo.
+        Image preview not available for this seeded demo document.
       </div>
     )
   }
   if (ft.includes('pdf')) {
+    if (previewSrc) {
+      return (
+        <div className="rounded-lg overflow-hidden border border-slate-200 bg-slate-50 min-h-[400px]">
+          <iframe src={previewSrc} title={doc.name} className="w-full h-[60vh]" />
+        </div>
+      )
+    }
     return (
       <div className="rounded-lg border border-slate-200 bg-slate-50 p-8 text-center text-sm text-muted-foreground">
         <FileText className="h-10 w-10 mx-auto mb-2 text-red-400" />
         <p className="font-medium text-slate-700 mb-1">PDF Document</p>
-        <p className="mb-3">In-browser PDF viewer is not available in this demo.</p>
+        <p className="mb-3">In-browser PDF preview is only available for newly uploaded files. This is a seeded demo PDF.</p>
         <Button
           variant="outline"
           onClick={() => toast.info('Open in viewer (demo) — would launch PDF viewer in production')}
@@ -525,19 +536,23 @@ function UploadDialog({
       })
     }, 80)
     try {
-      await apiPost('/api/documents', {
-        name: name || file.name,
-        category,
-        projectId: projectId || null,
-        fileUrl: objectUrl || `/documents/${name || file.name}`,
-        fileType: file.type || 'unknown',
-        fileSize: file.size,
-        description,
-      })
+      // Real multipart upload to /api/documents/upload (saves file to public/uploads/)
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('name', name || file.name)
+      fd.append('category', category)
+      if (projectId) fd.append('projectId', projectId)
+      if (description) fd.append('description', description)
+      const res = await fetch('/api/documents/upload', { method: 'POST', body: fd })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || `Upload failed (${res.status})`)
+      }
+      const savedUrl = (await res.json())?.document?.fileUrl
       setProgress(100)
       clearInterval(step)
       toast.success('Document uploaded')
-      onUploaded(name || file.name, objectUrl)
+      onUploaded(name || file.name, savedUrl || objectUrl)
       onOpenChange(false)
       reset()
     } catch (e: any) {

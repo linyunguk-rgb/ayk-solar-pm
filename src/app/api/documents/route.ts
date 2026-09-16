@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { getSessionUser } from '@/lib/auth'
+import { getSessionUser, tenantWhere } from '@/lib/auth'
 
 export async function GET(req: NextRequest) {
+  const user = await getSessionUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const tw = await tenantWhere()
   const { searchParams } = new URL(req.url)
   const projectId = searchParams.get('projectId')
   const category = searchParams.get('category')
 
-  const where: any = {}
+  const where: any = { ...tw }
   if (projectId && projectId !== 'all') where.projectId = projectId
   if (category && category !== 'all') where.category = category
 
@@ -27,9 +30,16 @@ export async function POST(req: NextRequest) {
   if (!name || !category) {
     return NextResponse.json({ error: 'Name and category required' }, { status: 400 })
   }
+  if (projectId) {
+    const project = await db.project.findUnique({ where: { id: projectId }, select: { tenantId: true } })
+    if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+    if (!user.isMasterAdmin && project.tenantId !== user.tenantId) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
+  }
   const document = await db.document.create({
     data: {
-      name, category, projectId: projectId || null,
+      name, category, projectId: projectId || null, tenantId: user.tenantId,
       fileUrl: fileUrl || `/documents/${name}`,
       fileType: fileType || 'unknown',
       fileSize: Number(fileSize) || 0,

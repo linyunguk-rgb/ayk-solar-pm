@@ -1,17 +1,22 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { calcOverallProgress, calcPlannedProgress } from '@/lib/constants'
+import { getSessionUser, tenantWhere } from '@/lib/auth'
 
-// Aggregated dashboard stats
+// Aggregated dashboard stats (tenant-scoped)
 export async function GET() {
-  const projects = await db.project.findMany({ include: { stages: true, manager: true } })
-  const tasks = await db.task.findMany()
-  const workers = await db.worker.findMany()
-  const materials = await db.material.findMany()
-  const incidents = await db.safetyIncident.findMany()
-  const expenses = await db.expense.findMany()
-  const notifications = await db.notification.findMany({ orderBy: { createdAt: 'desc' }, take: 12 })
-  const checklists = await db.safetyChecklist.findMany({ orderBy: { date: 'desc' }, take: 30 })
+  const user = await getSessionUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const tw = await tenantWhere()
+
+  const projects = await db.project.findMany({ where: tw, include: { stages: true, manager: true } })
+  const tasks = await db.task.findMany({ where: tw })
+  const workers = await db.worker.findMany({ where: tw })
+  const materials = await db.material.findMany({ where: tw })
+  const incidents = await db.safetyIncident.findMany({ where: tw })
+  const expenses = await db.expense.findMany({ where: tw })
+  const notifications = await db.notification.findMany({ where: tw, orderBy: { createdAt: 'desc' }, take: 12 })
+  const checklists = await db.safetyChecklist.findMany({ where: tw, orderBy: { date: 'desc' }, take: 30 })
 
   const activeProjects = projects.filter(p => p.status === 'Active').length
   const delayedProjects = projects.filter(p => p.status === 'Delayed').length
@@ -53,7 +58,7 @@ export async function GET() {
   const today = new Date(); today.setHours(0,0,0,0)
   const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1)
   const todayAttendance = await db.attendance.findMany({
-    where: { date: { gte: today, lt: tomorrow }, status: 'Present' },
+    where: { date: { gte: today, lt: tomorrow }, status: 'Present', worker: { ...tw } },
   })
   const workersOnSite = todayAttendance.length
 
@@ -73,7 +78,7 @@ export async function GET() {
   // 1. Installation progress over last 14 days (panels installed)
   const last14 = [] as { date: string; installed: number; cumulative: number }[]
   const dailyEntries = await db.dailyProgress.findMany({
-    where: { date: { gte: new Date(Date.now() - 14 * 86400000) } },
+    where: { ...tw, date: { gte: new Date(Date.now() - 14 * 86400000) } },
     orderBy: { date: 'asc' },
   })
   const byDate = new Map<string, number>()
@@ -111,7 +116,7 @@ export async function GET() {
     const d = new Date(Date.now() - i * 86400000)
     d.setHours(0,0,0,0)
     const next = new Date(d); next.setDate(next.getDate() + 1)
-    const att = await db.attendance.findMany({ where: { date: { gte: d, lt: next }, status: 'Present' } })
+    const att = await db.attendance.findMany({ where: { date: { gte: d, lt: next }, status: 'Present', worker: { ...tw } } })
     manpowerTrend.push({ date: d.toISOString().slice(0,10), workers: att.length })
   }
 

@@ -1,0 +1,194 @@
+'use client'
+import { useState } from 'react'
+import { useAppStore } from '@/store/app-store'
+import { apiPost } from '@/hooks/use-fetch'
+import { APP_NAME, APP_TAGLINE } from '@/lib/constants'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Sun, ArrowLeft, Building2, KeyRound, ArrowRight, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react'
+
+export function EnterpriseEntryPage() {
+  const setEntryMode = useAppStore(s => s.setEntryMode)
+  const setUser = useAppStore(s => s.setUser)
+  const [code, setCode] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [validated, setValidated] = useState<any>(null)
+
+  async function validateCode() {
+    if (!code.trim()) { setError('Please enter your access code'); return }
+    setLoading(true); setError('')
+    try {
+      const res = await apiPost<any>('/api/access-code/validate', { code: code.trim().toUpperCase() })
+      setValidated(res)
+    } catch (e: any) { setError(e.message || 'Invalid code') }
+    finally { setLoading(false) }
+  }
+
+  if (validated?.valid && !validated.hasTenant) {
+    return <CompanySetupWizard code={code.trim().toUpperCase()} label={validated.label} />
+  }
+  if (validated?.valid && validated.hasTenant) {
+    return <EnterpriseLogin code={code.trim().toUpperCase()} tenantId={validated.tenantId} />
+  }
+
+  return (
+    <div className="min-h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-emerald-900 p-6">
+      <div className="w-full max-w-md">
+        <div className="flex flex-col items-center mb-8">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-lg mb-3"><Sun className="h-7 w-7 text-white" /></div>
+          <div className="text-xl font-bold text-white">{APP_NAME}</div>
+          <div className="text-xs text-emerald-300">{APP_TAGLINE}</div>
+        </div>
+        <Card className="border-emerald-200/30 shadow-2xl">
+          <CardHeader>
+            <button onClick={() => setEntryMode('landing')} className="text-xs text-slate-500 hover:text-slate-700 flex items-center gap-1 mb-2"><ArrowLeft className="h-3 w-3" /> Back to start</button>
+            <div className="flex items-center gap-2">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600"><KeyRound className="h-5 w-5" /></div>
+              <div><CardTitle className="text-xl">Enterprise Access</CardTitle><CardDescription>Enter the access code provided by the platform admin</CardDescription></div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="code">Access Code</Label>
+              <Input id="code" value={code} onChange={e => { setCode(e.target.value.toUpperCase()); setError('') }} placeholder="AYK-XXXX-XXXX" className="font-mono text-center text-lg tracking-widest h-12" onKeyDown={e => e.key === 'Enter' && validateCode()} autoFocus />
+            </div>
+            {error && <div className="flex items-center gap-2 rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700"><AlertCircle className="h-4 w-4 shrink-0" /> <span>{error}</span></div>}
+            <Button onClick={validateCode} disabled={loading || !code.trim()} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white h-11">{loading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Validating…</> : <>Validate Code <ArrowRight className="h-4 w-4 ml-1" /></>}</Button>
+            <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-xs text-emerald-700">
+              <p className="font-semibold mb-1">How it works:</p>
+              <ul className="space-y-1 list-disc list-inside text-emerald-600">
+                <li>New company: set up your company name, logo and first admin.</li>
+                <li>Existing company: log in with your company email and password.</li>
+                <li>Your data is fully isolated — no other company can access it.</li>
+              </ul>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  )
+}
+
+function CompanySetupWizard({ code, label }: { code: string; label?: string }) {
+  const setUser = useAppStore(s => s.setUser)
+  const [step, setStep] = useState(1)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [companyName, setCompanyName] = useState('')
+  const [address, setAddress] = useState('')
+  const [uen, setUen] = useState('')
+  const [adminName, setAdminName] = useState('')
+  const [adminEmail, setAdminEmail] = useState('')
+  const [adminPassword, setAdminPassword] = useState('')
+  const [phone, setPhone] = useState('')
+
+  async function handleSubmit() {
+    setLoading(true); setError('')
+    try {
+      const res = await apiPost<any>('/api/company/setup', { code, companyName, address, uen, adminName, adminEmail, adminPassword, phone })
+      setUser(res.user)
+    } catch (e: any) { setError(e.message || 'Setup failed') }
+    finally { setLoading(false) }
+  }
+
+  return (
+    <div className="min-h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-emerald-900 p-4 sm:p-6">
+      <div className="w-full max-w-2xl">
+        <div className="text-center mb-6">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-lg mx-auto mb-3"><Building2 className="h-7 w-7 text-white" /></div>
+          <h1 className="text-2xl font-bold text-white">Set Up Your Company</h1>
+          <p className="text-sm text-emerald-300 mt-1">Welcome to {APP_NAME}! Let's configure your private workspace.</p>
+        </div>
+        <div className="flex items-center justify-center gap-2 mb-6">
+          {Array.from({ length: 2 }).map((_, i) => (<div key={i} className={`h-1.5 rounded-full transition-all ${i + 1 <= step ? 'bg-emerald-400 w-12' : 'bg-white/20 w-8'}`} />))}
+          <span className="text-xs text-slate-400 ml-2">Step {step} of 2</span>
+        </div>
+        <Card className="shadow-2xl">
+          <CardContent className="p-6 sm:p-8">
+            {step === 1 && (
+              <div className="space-y-4">
+                <div><h2 className="text-lg font-semibold text-slate-900 mb-1">Company Details</h2><p className="text-sm text-slate-500 mb-4">Tell us about your company. You can change these later in Settings.</p></div>
+                <div className="space-y-3">
+                  <div><Label htmlFor="cname">Company Name *</Label><Input id="cname" value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="e.g. SunTech Solar Pte Ltd" className="h-11" /></div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div><Label htmlFor="uen">UEN / Reg. No.</Label><Input id="uen" value={uen} onChange={e => setUen(e.target.value)} placeholder="202400001A" className="h-11" /></div>
+                    <div><Label htmlFor="phone">Company Phone</Label><Input id="phone" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+65 6000 0000" className="h-11" /></div>
+                  </div>
+                  <div><Label htmlFor="addr">Address</Label><Input id="addr" value={address} onChange={e => setAddress(e.target.value)} placeholder="1 Tuas Avenue, Singapore 639000" className="h-11" /></div>
+                </div>
+                <Button onClick={() => setStep(2)} disabled={!companyName.trim()} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white h-11">Continue <ArrowRight className="h-4 w-4 ml-1" /></Button>
+              </div>
+            )}
+            {step === 2 && (
+              <div className="space-y-4">
+                <div><h2 className="text-lg font-semibold text-slate-900 mb-1">Admin Account</h2><p className="text-sm text-slate-500 mb-4">Create the first admin account for {companyName}. You'll be able to add more team members later.</p></div>
+                <div className="space-y-3">
+                  <div><Label htmlFor="aname">Your Name *</Label><Input id="aname" value={adminName} onChange={e => setAdminName(e.target.value)} placeholder="John Doe" className="h-11" /></div>
+                  <div><Label htmlFor="aemail">Email *</Label><Input id="aemail" type="email" value={adminEmail} onChange={e => setAdminEmail(e.target.value)} placeholder="admin@yourcompany.com" className="h-11" /></div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div><Label htmlFor="apass">Password *</Label><Input id="apass" type="password" value={adminPassword} onChange={e => setAdminPassword(e.target.value)} placeholder="Min 6 characters" className="h-11" /></div>
+                    <div><Label htmlFor="aphone">Your Phone</Label><Input id="aphone" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+65 9000 0000" className="h-11" /></div>
+                  </div>
+                </div>
+                {error && <div className="flex items-center gap-2 rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700"><AlertCircle className="h-4 w-4 shrink-0" /> <span>{error}</span></div>}
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setStep(1)} className="h-11">Back</Button>
+                  <Button onClick={handleSubmit} disabled={loading || !adminName.trim() || !adminEmail.trim() || !adminPassword.trim()} className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white h-11">{loading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Creating workspace…</> : <>Create Workspace <CheckCircle2 className="h-4 w-4 ml-1" /></>}</Button>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  )
+}
+
+function EnterpriseLogin({ code, tenantId }: { code: string; tenantId: string }) {
+  const setUser = useAppStore(s => s.setUser)
+  const setEntryMode = useAppStore(s => s.setEntryMode)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setLoading(true); setError('')
+    try {
+      const res = await apiPost<any>('/api/auth/login', { email, password, accessCode: code })
+      setUser(res)
+    } catch (e: any) { setError(e.message || 'Login failed') }
+    finally { setLoading(false) }
+  }
+
+  return (
+    <div className="min-h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-emerald-900 p-6">
+      <div className="w-full max-w-md">
+        <div className="flex flex-col items-center mb-8">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-lg mb-3"><Building2 className="h-7 w-7 text-white" /></div>
+          <h1 className="text-xl font-bold text-white">Company Login</h1>
+          <p className="text-xs text-emerald-300">Access code validated — log in to your company</p>
+        </div>
+        <Card className="shadow-2xl">
+          <CardHeader>
+            <button onClick={() => setEntryMode('enterprise')} className="text-xs text-slate-500 hover:text-slate-700 flex items-center gap-1 mb-2"><ArrowLeft className="h-3 w-3" /> Use a different code</button>
+            <CardTitle className="text-xl">Sign In</CardTitle>
+            <CardDescription>Enter your company email and password</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-2"><Label htmlFor="email">Email</Label><Input id="email" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@yourcompany.com" required disabled={loading} className="h-11" /></div>
+              <div className="space-y-2"><Label htmlFor="password">Password</Label><Input id="password" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" required disabled={loading} className="h-11" /></div>
+              {error && <div className="flex items-center gap-2 rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700"><AlertCircle className="h-4 w-4 shrink-0" /> <span>{error}</span></div>}
+              <Button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700 text-white h-11" disabled={loading}>{loading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Signing in…</> : <>Sign in <ArrowRight className="h-4 w-4 ml-1" /></>}</Button>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  )
+}

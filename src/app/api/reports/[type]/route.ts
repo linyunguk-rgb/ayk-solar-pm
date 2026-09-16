@@ -1,18 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { calcOverallProgress, calcPlannedProgress, formatCurrency, formatDate, APP_NAME, APP_TAGLINE } from '@/lib/constants'
+import { getSessionUser, tenantWhere } from '@/lib/auth'
 
-// Report generator - returns structured data + a print-ready HTML payload
+// Report generator - returns structured data + a print-ready HTML payload (tenant-scoped)
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ type: string }> }) {
+  const user = await getSessionUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const tw = await tenantWhere()
   const { type } = await params
 
-  const projects = await db.project.findMany({ include: { stages: true, manager: true, dailyProgress: true, tasks: true, expenses: true, documents: true, materialTransactions: true } })
-  const tasks = await db.task.findMany({ include: { project: true, assignedTo: true } })
-  const workers = await db.worker.findMany({ include: { project: true, attendance: { take: 30, orderBy: { date: 'desc' } } } })
-  const materials = await db.material.findMany({ include: { transactions: { include: { project: true } } } })
-  const expenses = await db.expense.findMany({ include: { project: true } })
-  const incidents = await db.safetyIncident.findMany({ include: { project: true } })
-  const checklists = await db.safetyChecklist.findMany({ include: { project: true } })
+  const projects = await db.project.findMany({ where: tw, include: { stages: true, manager: true, dailyProgress: true, tasks: true, expenses: true, documents: true, materialTransactions: true } })
+  const tasks = await db.task.findMany({ where: tw, include: { project: true, assignedTo: true } })
+  const workers = await db.worker.findMany({ where: tw, include: { project: true, attendance: { take: 30, orderBy: { date: 'desc' } } } })
+  const materials = await db.material.findMany({ where: tw, include: { transactions: { include: { project: true } } } })
+  const expenses = await db.expense.findMany({ where: tw, include: { project: true } })
+  const incidents = await db.safetyIncident.findMany({ where: tw, include: { project: true } })
+  const checklists = await db.safetyChecklist.findMany({ where: tw, include: { project: true } })
 
   let report: any = { type, generatedAt: new Date().toISOString(), title: '', html: '' }
 
@@ -31,7 +35,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ typ
   switch (type) {
     case 'daily': {
       const today = new Date(); today.setHours(0,0,0,0)
-      const todayEntries = await db.dailyProgress.findMany({ where: { date: { gte: today } }, include: { project: true, submittedBy: true } })
+      const todayEntries = await db.dailyProgress.findMany({ where: { ...tw, date: { gte: today } }, include: { project: true, submittedBy: true } })
       report.title = 'Daily Progress Report'
       report.data = { entries: todayEntries }
       report.html = header('Daily Progress Report') + `
@@ -63,7 +67,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ typ
     }
     case 'weekly': {
       const weekAgo = new Date(Date.now() - 7 * 86400000)
-      const weekly = await db.dailyProgress.findMany({ where: { date: { gte: weekAgo } }, include: { project: true } })
+      const weekly = await db.dailyProgress.findMany({ where: { ...tw, date: { gte: weekAgo } }, include: { project: true } })
       report.title = 'Weekly Progress Report'
       report.data = { entries: weekly }
       const byProject = new Map<string, number>()
@@ -95,7 +99,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ typ
     }
     case 'monthly': {
       const monthAgo = new Date(Date.now() - 30 * 86400000)
-      const monthly = await db.dailyProgress.findMany({ where: { date: { gte: monthAgo } }, include: { project: true } })
+      const monthly = await db.dailyProgress.findMany({ where: { ...tw, date: { gte: monthAgo } }, include: { project: true } })
       report.title = 'Monthly Progress Report'
       const totalInstalled = monthly.reduce((s, e) => s + e.installedPanels, 0)
       const totalManHours = monthly.reduce((s, e) => s + e.manHours, 0)

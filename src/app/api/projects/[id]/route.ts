@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { calcOverallProgress, calcPlannedProgress } from '@/lib/constants'
-import { getSessionUser } from '@/lib/auth'
+import { getSessionUser, tenantWhere } from '@/lib/auth'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const user = await getSessionUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const tw = await tenantWhere()
   const { id } = await params
   const project = await db.project.findUnique({
     where: { id },
@@ -19,6 +22,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     },
   })
   if (!project) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  // Tenant isolation: tenant users can only access their own; master admin can access any
+  if (!user.isMasterAdmin && project.tenantId !== user.tenantId) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
 
   // build S-curve data from daily progress
   const sCurve = project.dailyProgress.slice().reverse().map(d => ({
@@ -42,6 +49,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const user = await getSessionUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { id } = await params
+  const existing = await db.project.findUnique({ where: { id }, select: { tenantId: true } })
+  if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!user.isMasterAdmin && existing.tenantId !== user.tenantId) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
   const body = await req.json()
   const { name, location, client, totalPanels, installedPanels, capacity, status, startDate, endDate, budget, actualCost, managerId, description } = body
 
@@ -68,6 +80,11 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   const user = await getSessionUser()
   if (!user || user.role !== 'Admin') return NextResponse.json({ error: 'Admin only' }, { status: 403 })
   const { id } = await params
+  const existing = await db.project.findUnique({ where: { id }, select: { tenantId: true } })
+  if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!user.isMasterAdmin && existing.tenantId !== user.tenantId) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
   await db.project.delete({ where: { id } })
   return NextResponse.json({ success: true })
 }
