@@ -1,53 +1,49 @@
 #!/bin/bash
 # AYK PTE LTD — Pre-build script for Vercel
-# FULLY AUTOMATIC: loads .env.production if DATABASE_URL is not set,
-# switches Prisma to PostgreSQL, pushes schema to Supabase.
-# You NEVER need to set environment variables in Vercel manually.
+# This script ONLY switches the Prisma provider and generates the client.
+# It does NOT connect to the database during build (that was causing failures).
+# Database setup happens AFTER deploy via the /api/setup endpoint.
 
 cd /home/z/my-project
 
-# ─── Step 1: Load .env.production if DATABASE_URL is not set ───
-if [ -z "$DATABASE_URL" ]; then
-  echo "🔄 DATABASE_URL not set in Vercel — loading from .env.production"
-  if [ -f ".env.production" ]; then
-    # Export all variables from .env.production
-    set -a
-    source .env.production
-    set +a
-    echo "✓ Loaded environment from .env.production"
-  else
-    echo "⚠️  No .env.production file found — falling back to SQLite"
-  fi
+echo "🔄 Loading environment from .env.production..."
+if [ -f ".env.production" ]; then
+  # Parse .env.production and export variables
+  # Using a method that handles special characters in passwords
+  while IFS='=' read -r key value || [ -n "$key" ]; do
+    # Skip comments and empty lines
+    case "$key" in
+      \#*|"") continue ;;
+    esac
+    # Remove quotes from value
+    value="${value#\"}"
+    value="${value%\"}"
+    export "$key=$value"
+  done < .env.production
+  echo "✓ Loaded environment from .env.production"
 fi
 
-# ─── Step 2: Auto-detect the Vercel URL if not set ───
-if [ -z "$NEXTAUTH_URL" ] && [ -n "$VERCEL_URL" ]; then
+# Auto-detect Vercel URL
+if [ -n "$VERCEL_URL" ]; then
   export NEXTAUTH_URL="https://$VERCEL_URL"
-  echo "✓ Auto-detected NEXTAUTH_URL: $NEXTAUTH_URL"
-fi
-if [ -z "$NEXT_PUBLIC_APP_URL" ] && [ -n "$VERCEL_URL" ]; then
   export NEXT_PUBLIC_APP_URL="https://$VERCEL_URL"
-  echo "✓ Auto-detected NEXT_PUBLIC_APP_URL: $NEXT_PUBLIC_APP_URL"
+  echo "✓ Auto-detected URL: https://$VERCEL_URL"
 fi
 
-# ─── Step 3: Switch Prisma to PostgreSQL if DATABASE_URL is postgresql:// ───
+# Switch Prisma to PostgreSQL if DATABASE_URL is set and starts with postgresql://
 if echo "$DATABASE_URL" | grep -q "^postgresql://\|^postgres://"; then
-  echo "🔄 PostgreSQL database detected — switching Prisma provider to postgresql"
+  echo "🔄 PostgreSQL detected — switching Prisma provider to postgresql"
   sed -i 's/provider = "sqlite"/provider = "postgresql"/' prisma/schema.prisma
   echo "✓ Schema provider set to postgresql"
-  
-  # Generate Prisma client
-  echo "🔄 Generating Prisma client..."
-  npx prisma generate
-  
-  # Push schema to database
-  echo "🔄 Pushing schema to PostgreSQL database (Supabase)..."
-  npx prisma db push --accept-data-loss 2>&1 || echo "⚠️ db push failed — tables may already exist"
-  echo "✓ Database schema pushed"
+elif [ -z "$DATABASE_URL" ]; then
+  echo "⚠️ DATABASE_URL not set — using SQLite (local dev)"
 else
   echo "🔄 SQLite database detected — keeping provider as sqlite"
-  sed -i 's/provider = "postgresql"/provider = "sqlite"/' prisma/schema.prisma
-  npx prisma generate
 fi
 
-echo "✓ Pre-build database setup complete"
+# Generate Prisma client (no database connection needed)
+echo "🔄 Generating Prisma client..."
+npx prisma generate
+echo "✓ Prisma client generated"
+
+echo "✓ Pre-build complete (no database connection required during build)"
