@@ -1,12 +1,18 @@
 import { PrismaClient } from '@prisma/client'
 
-// Supabase connection — password: Ayk2025Solar (no special characters)
-// Uses the Transaction Pooler (port 6543) which works with Vercel serverless.
-const SUPABASE_POOLER_URL = 'postgresql://postgres.qwcgtrbqiakfzxlpbwpj:Ayk2025Solar@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1&pool_timeout=120'
-const SUPABASE_DIRECT_URL = 'postgresql://postgres:Ayk2025Solar@db.qwcgtrbqiakfzxlpbwpj.supabase.co:5432/postgres'
+// ─── Supabase Connection ───
+// ALWAYS use the Transaction Pooler (port 6543) — it works with Vercel serverless.
+// The direct connection (port 5432) is blocked by Vercel's serverless functions.
+// Password: Ayk2025Solar (no special characters)
 
-// Use environment variable if set, otherwise fall back to Supabase pooler
-const databaseUrl = process.env.DATABASE_URL || SUPABASE_POOLER_URL
+const SUPABASE_POOLER_URL = 'postgresql://postgres.qwcgtrbqiakfzxlpbwpj:Ayk2025Solar@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1&pool_timeout=120'
+
+// For local dev, use SQLite. For production, ALWAYS use the pooler.
+const isLocalDev = process.env.NODE_ENV !== 'production' && (!process.env.DATABASE_URL || process.env.DATABASE_URL.startsWith('file:'))
+
+const databaseUrl = isLocalDev
+  ? (process.env.DATABASE_URL || 'file:/home/z/my-project/db/custom.db')
+  : SUPABASE_POOLER_URL  // In production, ALWAYS use the pooler — ignore any other DATABASE_URL
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
