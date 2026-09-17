@@ -5,7 +5,7 @@ import { PrismaClient } from '@prisma/client'
 // It tries multiple Supabase pooler connections to find the one that works.
 
 const SUPABASE_REF = 'qwcgtrbqiakfzxlpbwpj'
-const SUPABASE_PASS = 'DATABASE%2313a%5C' // URL-encoded "DATABASE#13a\"
+const SUPABASE_PASS = 'Ayk2025Solar' // Reset password — no special characters
 
 // Try all common Supabase pooler regions
 const POOLER_REGIONS = [
