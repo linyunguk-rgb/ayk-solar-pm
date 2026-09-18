@@ -1,54 +1,46 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { PrismaClient } from '@prisma/client'
-import { hashPassword, generateAccessCode } from '@/lib/auth'
+import { hashPassword } from '@/lib/auth'
 
-// This route handles database setup AFTER deployment.
-// It creates tables + master admin + access codes ONLY (NO demo data).
+// SIMPLE setup: creates tables + master admin + one default company admin.
+// No access codes, no demo data — just a working login.
 
 const SUPABASE_POOLER_URL = 'postgresql://postgres.qwcgtrbqiakfzxlpbwpj:Ayk2025Solar@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1&pool_timeout=120'
 
-// Strong master admin password — NOT in any breach database
-const MASTER_EMAIL = 'admin@ayk.com.sg'
+// Credentials
+const MASTER_EMAIL = 'master@ayk.com.sg'
 const MASTER_PASSWORD = 'Ayk!Solar#Admin2025@Secure'
 
+// Default company admin (the user who will use the app)
+const ADMIN_EMAIL = 'admin@ayk.com.sg'
+const ADMIN_PASSWORD = 'Ayk2025Solar!'
+
 export async function GET() {
-  return NextResponse.json({
-    status: 'ready',
-    message: 'Database Setup API',
-    instructions: 'Send a POST request with the secret to set up your database',
-    secret: 'ayk-setup-2025',
-  })
+  return NextResponse.json({ status: 'ready', message: 'Send POST with {"secret":"ayk-setup-2025"}' })
 }
 
 export async function POST(req: NextRequest) {
-  const startTime = Date.now()
   try {
     const body = await req.json().catch(() => ({}))
-    const secret = body.secret || req.headers.get('x-setup-secret')
-    if (secret !== 'ayk-setup-2025') {
+    if (body.secret !== 'ayk-setup-2025') {
       return NextResponse.json({ error: 'Invalid secret. Use: ayk-setup-2025' }, { status: 403 })
     }
 
     const log: string[] = []
-    log.push('Starting database setup...')
+    log.push('Starting setup...')
 
     const db = new PrismaClient({ datasources: { db: { url: SUPABASE_POOLER_URL } } })
 
     try {
       // Test connection
       log.push('Testing database connection...')
-      try {
-        await db.$queryRaw`SELECT 1`
-        log.push('✓ Database connection successful')
-      } catch (e: any) {
-        log.push(`✗ Database connection failed: ${e.message}`)
-        return NextResponse.json({ error: 'Cannot connect to database', log }, { status: 500 })
-      }
+      await db.$queryRaw`SELECT 1`
+      log.push('✓ Database connected')
 
       // Create tables
-      log.push('Creating database tables...')
-      const createTables = [
-        `CREATE TABLE IF NOT EXISTS "tenants" ("id" TEXT PRIMARY KEY, "name" TEXT NOT NULL, "logo" TEXT, "address" TEXT, "uen" TEXT, "plan" TEXT DEFAULT 'demo', "isActive" BOOLEAN DEFAULT true, "createdAt" TIMESTAMP DEFAULT NOW(), "updatedAt" TIMESTAMP DEFAULT NOW())`,
+      log.push('Creating tables...')
+      const tables = [
+        `CREATE TABLE IF NOT EXISTS "tenants" ("id" TEXT PRIMARY KEY, "name" TEXT NOT NULL, "logo" TEXT, "address" TEXT, "uen" TEXT, "plan" TEXT DEFAULT 'enterprise', "isActive" BOOLEAN DEFAULT true, "createdAt" TIMESTAMP DEFAULT NOW(), "updatedAt" TIMESTAMP DEFAULT NOW())`,
         `CREATE TABLE IF NOT EXISTS "access_codes" ("id" TEXT PRIMARY KEY, "code" TEXT UNIQUE NOT NULL, "label" TEXT, "plan" TEXT DEFAULT 'enterprise', "maxUses" INTEGER DEFAULT 1, "usedCount" INTEGER DEFAULT 0, "isActive" BOOLEAN DEFAULT true, "tenantId" TEXT, "createdAt" TIMESTAMP DEFAULT NOW(), "updatedAt" TIMESTAMP DEFAULT NOW())`,
         `CREATE TABLE IF NOT EXISTS "users" ("id" TEXT PRIMARY KEY, "email" TEXT UNIQUE NOT NULL, "name" TEXT NOT NULL, "password" TEXT NOT NULL, "role" TEXT DEFAULT 'Worker', "avatar" TEXT, "phone" TEXT, "isActive" BOOLEAN DEFAULT true, "isTenantAdmin" BOOLEAN DEFAULT false, "isMasterAdmin" BOOLEAN DEFAULT false, "setupComplete" BOOLEAN DEFAULT true, "tenantId" TEXT, "createdAt" TIMESTAMP DEFAULT NOW(), "updatedAt" TIMESTAMP DEFAULT NOW())`,
         `CREATE TABLE IF NOT EXISTS "projects" ("id" TEXT PRIMARY KEY, "code" TEXT NOT NULL, "name" TEXT NOT NULL, "location" TEXT NOT NULL, "client" TEXT, "totalPanels" INTEGER DEFAULT 0, "installedPanels" INTEGER DEFAULT 0, "capacity" TEXT, "status" TEXT DEFAULT 'Active', "startDate" TIMESTAMP NOT NULL, "endDate" TIMESTAMP NOT NULL, "budget" FLOAT DEFAULT 0, "actualCost" FLOAT DEFAULT 0, "managerId" TEXT, "description" TEXT, "tenantId" TEXT, "createdAt" TIMESTAMP DEFAULT NOW(), "updatedAt" TIMESTAMP DEFAULT NOW())`,
@@ -65,25 +57,30 @@ export async function POST(req: NextRequest) {
         `CREATE TABLE IF NOT EXISTS "documents" ("id" TEXT PRIMARY KEY, "name" TEXT NOT NULL, "category" TEXT NOT NULL, "projectId" TEXT, "fileUrl" TEXT NOT NULL, "fileType" TEXT NOT NULL, "fileSize" INTEGER DEFAULT 0, "uploadedById" TEXT, "uploadedByName" TEXT, "description" TEXT, "tenantId" TEXT, "createdAt" TIMESTAMP DEFAULT NOW())`,
         `CREATE TABLE IF NOT EXISTS "notifications" ("id" TEXT PRIMARY KEY, "type" TEXT NOT NULL, "title" TEXT NOT NULL, "message" TEXT NOT NULL, "projectId" TEXT, "isRead" BOOLEAN DEFAULT false, "severity" TEXT DEFAULT 'info', "tenantId" TEXT, "createdAt" TIMESTAMP DEFAULT NOW())`,
       ]
-
-      for (const sql of createTables) {
+      for (const sql of tables) {
         try { await db.$executeRawUnsafe(sql) } catch (e: any) { if (!e.message.includes('already exists')) log.push(`  note: ${e.message.slice(0, 60)}`) }
       }
-      log.push('✓ All tables created')
+      log.push('✓ Tables created')
 
-      // Create ONLY master admin + access codes (NO demo data)
+      // Check if already set up
       const userCount = await db.user.count()
       if (userCount > 0) {
         log.push(`Database already has ${userCount} users — skipping seed`)
-        return NextResponse.json({ success: true, message: 'Database already set up', log, duration: `${Date.now() - startTime}ms` })
+        return NextResponse.json({ success: true, message: 'Already set up', log })
       }
 
-      log.push('Creating master admin (secure hashed password)...')
+      // Create the company (tenant)
+      log.push('Creating company...')
+      const tenant = await db.tenant.create({ data: { name: 'AYK PTE LTD', plan: 'enterprise', isActive: true } })
+      log.push('✓ Company created: AYK PTE LTD')
+
+      // Create master admin (for you — platform owner)
+      log.push('Creating master admin...')
       await db.user.create({
         data: {
           email: MASTER_EMAIL,
           name: 'Platform Admin',
-          password: hashPassword(MASTER_PASSWORD), // SECURE: scrypt hashing
+          password: hashPassword(MASTER_PASSWORD),
           role: 'Admin',
           isMasterAdmin: true,
           setupComplete: true,
@@ -91,31 +88,32 @@ export async function POST(req: NextRequest) {
       })
       log.push('✓ Master admin created')
 
-      log.push('Creating access codes...')
-      // Code for creating NEW companies
-      await db.accessCode.create({ data: { code: 'AYK-NEW-ENT1', label: 'New enterprise (1 seat)', plan: 'enterprise', maxUses: 1, isActive: true } })
-      await db.accessCode.create({ data: { code: 'AYK-NEW-ENT5', label: 'New enterprise (5 seats)', plan: 'enterprise', maxUses: 5, isActive: true } })
-      await db.accessCode.create({ data: { code: 'AYK-NEW-ENT20', label: 'New enterprise (20 seats)', plan: 'enterprise', maxUses: 20, isActive: true } })
-      log.push('✓ Access codes created')
+      // Create company admin (the main user who will use the app)
+      log.push('Creating company admin...')
+      await db.user.create({
+        data: {
+          email: ADMIN_EMAIL,
+          name: 'AYK Admin',
+          password: hashPassword(ADMIN_PASSWORD),
+          role: 'Admin',
+          isTenantAdmin: true,
+          setupComplete: true,
+          tenantId: tenant.id,
+        },
+      })
+      log.push('✓ Company admin created')
 
-      log.push('🎉 Database setup complete!')
-      log.push('')
-      log.push('=== CREDENTIALS ===')
-      log.push(`Master Admin Email: ${MASTER_EMAIL}`)
-      log.push(`Master Admin Password: ${MASTER_PASSWORD}`)
-      log.push(`Master Login URL: https://your-app.vercel.app/master-access`)
-      log.push(`Access Codes: AYK-NEW-ENT1, AYK-NEW-ENT5, AYK-NEW-ENT20`)
+      log.push('🎉 Setup complete!')
 
       return NextResponse.json({
         success: true,
         message: 'Database set up successfully!',
         log,
         credentials: {
+          companyAdmin: `${ADMIN_EMAIL} / ${ADMIN_PASSWORD}`,
           masterAdmin: `${MASTER_EMAIL} / ${MASTER_PASSWORD}`,
-          masterLoginUrl: 'https://your-app.vercel.app/master-access',
-          accessCodes: ['AYK-NEW-ENT1', 'AYK-NEW-ENT5', 'AYK-NEW-ENT20'],
+          masterLoginUrl: '/master-access',
         },
-        duration: `${Date.now() - startTime}ms`
       })
     } finally {
       await db.$disconnect()

@@ -16,14 +16,10 @@ export interface SessionUser {
   setupComplete?: boolean
 }
 
-export type EntryMode = 'landing' | 'enterprise' | 'app'
-
 interface AppState {
   user: SessionUser | null
   setUser: (u: SessionUser | null) => void
   logout: () => void
-  entryMode: EntryMode
-  setEntryMode: (m: EntryMode) => void
   currentNav: NavKey
   setNav: (n: NavKey) => void
   selectedProjectId: string | 'all'
@@ -43,10 +39,8 @@ export const useAppStore = create<AppState>()(
   persist(
     (set) => ({
       user: null,
-      setUser: (u) => set({ user: u, entryMode: u ? 'app' : 'landing' }),
-      logout: () => set({ user: null, entryMode: 'landing', currentNav: 'dashboard' }),
-      entryMode: 'landing',
-      setEntryMode: (m) => set({ entryMode: m }),
+      setUser: (u) => set({ user: u }),
+      logout: () => set({ user: null, currentNav: 'dashboard' }),
       currentNav: 'dashboard',
       setNav: (n) => set({ currentNav: n, detailProjectId: null }),
       selectedProjectId: 'all',
@@ -64,7 +58,7 @@ export const useAppStore = create<AppState>()(
     {
       name: 'ayk-app-store',
       skipHydration: true,
-      partialize: (s) => ({ user: s.user, entryMode: s.entryMode, currentNav: s.currentNav, selectedProjectId: s.selectedProjectId }) as AppState,
+      partialize: (s) => ({ user: s.user, currentNav: s.currentNav, selectedProjectId: s.selectedProjectId }) as AppState,
     }
   )
 )
