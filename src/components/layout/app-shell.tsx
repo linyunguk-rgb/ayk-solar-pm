@@ -6,7 +6,6 @@ import { Topbar } from './topbar'
 import { MobileNav } from './mobile-nav'
 import { canAccess, type NavKey, ROLES, type RoleKey } from '@/lib/constants'
 import { LandingPage } from '@/components/login/landing-page'
-import { EnterpriseEntryPage } from '@/components/login/enterprise-entry-page'
 import { DailyBackup } from '@/components/shared/daily-backup'
 
 const DashboardPage = lazy(() => import('@/components/pages/dashboard-page').then(m => ({ default: m.DashboardPage })))
@@ -37,7 +36,7 @@ function PageLoader() {
 }
 
 export function AppShell() {
-  const { user, currentNav, setNav, entryMode } = useAppStore()
+  const { user, currentNav, setNav } = useAppStore()
   const setUser = useAppStore(s => s.setUser)
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
@@ -50,7 +49,6 @@ export function AppShell() {
     fetch('/api/auth/me').then(r => r.json()).then(d => { if (d.user) setUser(d.user as any) }).catch(() => {})
   }, [setUser])
 
-  // Scroll to top whenever the page changes
   useEffect(() => {
     if (!mounted) return
     const main = document.querySelector('main')
@@ -66,6 +64,7 @@ export function AppShell() {
     )
   }
 
+  // Master admin gets a dedicated dashboard
   if (user?.isMasterAdmin && currentNav === 'dashboard') {
     return (
       <div className="min-h-screen bg-slate-50 flex">
@@ -81,10 +80,7 @@ export function AppShell() {
     )
   }
 
-  if (!user) {
-    if (entryMode === 'enterprise') return <EnterpriseEntryPage />
-    return <LandingPage />
-  }
+  if (!user) return <LandingPage />
 
   return (
     <div className="min-h-screen bg-slate-50 flex">
