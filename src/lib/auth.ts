@@ -1,6 +1,7 @@
-// AYK PTE LTD - Auth helper with multi-tenant support
+// AYK PTE LTD — Secure auth helper with proper password hashing
 import { cookies } from 'next/headers'
 import { db } from './db'
+import { scryptSync, randomBytes, timingSafeEqual } from 'crypto'
 
 export const SESSION_COOKIE = 'ayk_session'
 
@@ -15,6 +16,35 @@ export interface SessionUser {
   isTenantAdmin?: boolean
   isMasterAdmin?: boolean
   setupComplete?: boolean
+}
+
+// ─── Password Hashing (using Node's built-in scrypt) ───
+// Format: "scrypt:<salt>:<hash>" — this is secure and doesn't need external libraries.
+export function hashPassword(password: string): string {
+  const salt = randomBytes(16).toString('hex')
+  const hash = scryptSync(password, salt, 64).toString('hex')
+  return `scrypt:${salt}:${hash}`
+}
+
+export function verifyPassword(input: string, stored: string): boolean {
+  // Support old demo passwords (demo$<plain>) for backwards compatibility during migration
+  if (stored.startsWith('demo$')) {
+    return stored === `demo$${input}`
+  }
+  // New scrypt-based passwords
+  if (stored.startsWith('scrypt:')) {
+    const parts = stored.split(':')
+    if (parts.length !== 3) return false
+    const [, salt, hash] = parts
+    try {
+      const inputHash = scryptSync(input, salt, 64)
+      const storedHash = Buffer.from(hash, 'hex')
+      return inputHash.length === storedHash.length && timingSafeEqual(inputHash, storedHash)
+    } catch {
+      return false
+    }
+  }
+  return false
 }
 
 export async function getSessionUser(): Promise<SessionUser | null> {
@@ -47,10 +77,6 @@ export async function getTenantFilter(): Promise<string | null> {
 export async function tenantWhere(): Promise<Record<string, any>> {
   const tid = await getTenantFilter()
   return tid ? { tenantId: tid } : {}
-}
-
-export function verifyPassword(input: string, stored: string): boolean {
-  return stored === `demo$${input}` || stored === input
 }
 
 export function generateAccessCode(): string {

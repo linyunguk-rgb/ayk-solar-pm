@@ -16,7 +16,7 @@ export interface SessionUser {
   setupComplete?: boolean
 }
 
-export type EntryMode = 'landing' | 'demo' | 'enterprise' | 'app'
+export type EntryMode = 'landing' | 'enterprise' | 'app'
 
 interface AppState {
   user: SessionUser | null

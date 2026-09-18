@@ -86,10 +86,11 @@ export default function SetupPage() {
                   <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-4 mb-6 text-left">
                     <p className="text-xs font-bold text-emerald-800 mb-2 uppercase">Login Credentials:</p>
                     <div className="space-y-2 text-sm">
-                      <div className="flex justify-between"><span className="text-emerald-700">Master Admin:</span><code className="font-mono text-emerald-900">master@ayk.com.sg / master123</code></div>
-                      <div className="flex justify-between"><span className="text-emerald-700">Demo Admin:</span><code className="font-mono text-emerald-900">admin@ayk.com.sg / admin123</code></div>
-                      <div className="flex justify-between"><span className="text-emerald-700">Access Codes:</span><code className="font-mono text-emerald-900 text-xs">AYK-NEW-ENT1, AYK-NEW-ENT5</code></div>
+                      <div className="flex justify-between gap-2"><span className="text-emerald-700">Master Admin:</span><code className="font-mono text-emerald-900 text-xs break-all">{result.credentials.masterAdmin}</code></div>
+                      <div className="flex justify-between gap-2"><span className="text-emerald-700">Master Login URL:</span><code className="font-mono text-emerald-900 text-xs break-all">{result.credentials.masterLoginUrl || '/master-access'}</code></div>
+                      <div className="flex justify-between gap-2"><span className="text-emerald-700">Access Codes:</span><code className="font-mono text-emerald-900 text-xs">{result.credentials.accessCodes?.join(', ')}</code></div>
                     </div>
+                    <p className="text-xs text-emerald-600 mt-3">⚠️ Save these credentials securely. The master login URL is not linked from the main app — bookmark it.</p>
                   </div>
                 )}
 

@@ -7,7 +7,6 @@ import { MobileNav } from './mobile-nav'
 import { canAccess, type NavKey, ROLES, type RoleKey } from '@/lib/constants'
 import { LandingPage } from '@/components/login/landing-page'
 import { EnterpriseEntryPage } from '@/components/login/enterprise-entry-page'
-import { LoginPage } from '@/components/login/login-page'
 import { DailyBackup } from '@/components/shared/daily-backup'
 
 const DashboardPage = lazy(() => import('@/components/pages/dashboard-page').then(m => ({ default: m.DashboardPage })))
@@ -84,7 +83,6 @@ export function AppShell() {
 
   if (!user) {
     if (entryMode === 'enterprise') return <EnterpriseEntryPage />
-    if (entryMode === 'demo') return <LoginPage />
     return <LandingPage />
   }
 
