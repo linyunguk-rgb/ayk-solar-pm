@@ -10,17 +10,26 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const body = await req.json()
 
   // Get the target user
-  const target = await db.user.findUnique({ where: { id }, select: { id: true, tenantId: true, isMasterAdmin: true } })
+  const target = await db.user.findUnique({ where: { id }, select: { id: true, tenantId: true, isMasterAdmin: true, email: true } })
   if (!target) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   // Permission: admin can update users in their tenant; user can update self; master admin can update anyone
   const canEdit = user.isMasterAdmin || user.id === id || (user.role === 'Admin' && target.tenantId === user.tenantId)
   if (!canEdit) return NextResponse.json({ error: 'Permission denied' }, { status: 403 })
 
+  // If email is being changed, check it's not taken by someone else
+  if (body.email && body.email.toLowerCase().trim() !== target.email) {
+    const existing = await db.user.findUnique({ where: { email: body.email.toLowerCase().trim() } })
+    if (existing && existing.id !== id) {
+      return NextResponse.json({ error: 'That email is already used by another account' }, { status: 400 })
+    }
+  }
+
   const data: any = {}
   for (const k of ['name', 'role', 'phone', 'isActive']) {
     if (body[k] !== undefined) data[k] = body[k]
   }
+  if (body.email) data.email = body.email.toLowerCase().trim()
   if (body.password) {
     if (body.password.length < 6) return NextResponse.json({ error: 'Password must be at least 6 characters' }, { status: 400 })
     data.password = hashPassword(body.password)

@@ -162,7 +162,7 @@ export function Topbar() {
               <HelpCircle className="h-4 w-4 text-slate-400" /> User Guide
             </button>
             <button onClick={() => { setNav('settings'); setMenuOpen(false) }} className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
-              <UserIcon className="h-4 w-4 text-slate-400" /> My Profile
+              <UserIcon className="h-4 w-4 text-slate-400" /> My Profile & Password
             </button>
             <button onClick={() => { setNav('settings'); setMenuOpen(false) }} className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
               <Settings className="h-4 w-4 text-slate-400" /> Settings

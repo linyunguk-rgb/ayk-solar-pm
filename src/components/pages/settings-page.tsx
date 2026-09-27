@@ -105,6 +105,7 @@ export function SettingsPage() {
 function ProfileTab() {
   const { user, setUser } = useAppStore()
   const [name, setName] = useState(user?.name || '')
+  const [email, setEmail] = useState(user?.email || '')
   const [phone, setPhone] = useState(user?.phone || '')
   const [password, setPassword] = useState('')
   const [saving, setSaving] = useState(false)
@@ -115,16 +116,17 @@ function ProfileTab() {
     if (!user) return
     setSaving(true)
     try {
-      const body: any = { name, phone }
+      const body: any = { name, email, phone }
       if (password) body.password = password
       const res = await apiPut<{ user: UserRow }>(`/api/users/${user.id}`, body)
       setUser({
         ...user,
         name: res.user.name,
+        email: res.user.email,
         phone: res.user.phone,
       })
       setPassword('')
-      toast.success('Profile updated')
+      toast.success('Profile updated successfully')
     } catch (e: any) {
       toast.error(e.message || 'Failed to update profile')
     } finally {
@@ -136,8 +138,8 @@ function ProfileTab() {
     <div className="space-y-4">
       <SubSection
         section="settings"
-        title="Account"
-        description="Your signed-in identity and contact details"
+        title="My Account"
+        description="Update your name, email, phone, or password"
         icon={<UserIcon className="h-4 w-4" />}
       />
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -148,7 +150,7 @@ function ProfileTab() {
           </CardHeader>
           <CardContent className="flex flex-col items-center text-center gap-3 pt-2">
             <Avatar className="h-20 w-20">
-              <AvatarFallback className="bg-stone-600 text-white text-2xl font-semibold">
+              <AvatarFallback className="bg-emerald-600 text-white text-2xl font-semibold">
                 {user.name?.[0]?.toUpperCase() || 'U'}
               </AvatarFallback>
             </Avatar>
@@ -161,7 +163,6 @@ function ProfileTab() {
             </Badge>
             <div className="grid grid-cols-1 gap-2 w-full text-left pt-3 mt-2 border-t border-border/60">
               <Row label="Phone" value={user.phone || '—'} />
-              <Row label="Member since" value={formatDate(new Date().toISOString())} />
               <Row label="Status" value={<Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 border">Active</Badge>} />
             </div>
           </CardContent>
@@ -169,8 +170,8 @@ function ProfileTab() {
 
         <Card className="lg:col-span-2 border-border/60 shadow-sm">
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Edit Profile</CardTitle>
-            <CardDescription className="text-xs">Update your name, contact, or password</CardDescription>
+            <CardTitle className="text-base">Edit My Details</CardTitle>
+            <CardDescription className="text-xs">Change your name, email, phone, or password anytime</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 pt-2">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -180,7 +181,8 @@ function ProfileTab() {
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="p-email" className="text-[11px] uppercase tracking-wide text-muted-foreground">Email</Label>
-                <Input id="p-email" value={user.email} disabled className="bg-muted/50" />
+                <Input id="p-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" />
+                <p className="text-[11px] text-emerald-600">You can change your email — use the new one to log in next time.</p>
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="p-phone" className="text-[11px] uppercase tracking-wide text-muted-foreground">Phone</Label>
@@ -189,11 +191,12 @@ function ProfileTab() {
               <div className="space-y-1.5">
                 <Label htmlFor="p-role" className="text-[11px] uppercase tracking-wide text-muted-foreground">Role</Label>
                 <Input id="p-role" value={ROLES[user.role as RoleKey] || user.role} disabled className="bg-muted/50" />
+                <p className="text-[11px] text-muted-foreground">Ask your admin to change your role.</p>
               </div>
               <div className="space-y-1.5 sm:col-span-2">
                 <Label htmlFor="p-pw" className="text-[11px] uppercase tracking-wide text-muted-foreground">New password (optional)</Label>
                 <Input id="p-pw" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Leave blank to keep current" />
-                <p className="text-[11px] text-muted-foreground">Demo accounts use format <code>demo$&lt;plain&gt;</code>.</p>
+                <p className="text-[11px] text-muted-foreground">Min 6 characters. Use a strong, unique password.</p>
               </div>
             </div>
             <div className="flex justify-end pt-2 border-t border-border/60">
