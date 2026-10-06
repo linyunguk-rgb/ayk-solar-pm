@@ -293,7 +293,7 @@ function UsersTab() {
           <CardTitle className="text-base flex items-center gap-2">
             <Users className="h-4 w-4 text-emerald-600" /> Registered Users
           </CardTitle>
-          <CardDescription className="text-xs">{users.length} account(s) on file</CardDescription>
+          <CardDescription className="text-xs">{users.length} account(s) on file — tap Edit or Delete to manage</CardDescription>
         </CardHeader>
         <CardContent className="pt-2">
           {loading ? (
@@ -305,59 +305,112 @@ function UsersTab() {
               description="Add your first user to get started."
             />
           ) : (
-            <ScrollArea className="max-h-[500px] ayk-scrollbar">
-              <Table>
-                <TableHeader>
-                  <TableRow className="sticky top-0 bg-card z-10">
-                    <TableHead className="min-w-[160px]">Name</TableHead>
-                    <TableHead className="min-w-[200px]">Email</TableHead>
-                    <TableHead className="min-w-[140px]">Role</TableHead>
-                    <TableHead className="min-w-[140px]">Phone</TableHead>
-                    <TableHead className="min-w-[100px]">Status</TableHead>
-                    <TableHead className="min-w-[120px]">Created</TableHead>
-                    <TableHead className="text-right min-w-[120px]">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {users.map((u) => (
-                    <TableRow key={u.id} className="hover:bg-slate-50">
-                      <TableCell className="font-medium">{u.name}</TableCell>
-                      <TableCell className="text-muted-foreground text-xs">{u.email}</TableCell>
-                      <TableCell>
-                        <Badge className={`border ${ROLE_BADGE[u.role] || 'bg-slate-100 text-slate-700 border-slate-200'}`}>
-                          {ROLES[u.role as RoleKey] || u.role}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-xs">{u.phone || '—'}</TableCell>
-                      <TableCell>
-                        <Badge className={u.isActive ? 'bg-emerald-100 text-emerald-700 border-emerald-200 border' : 'bg-slate-100 text-slate-500 border-slate-200 border'}>
-                          {u.isActive ? 'Active' : 'Inactive'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">{formatDate(u.createdAt)}</TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button variant="ghost" size="icon" onClick={() => setEditUser(u)} aria-label="Edit user" title="Edit">
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => setDeleteUser(u)}
-                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                            aria-label="Deactivate user"
-                            title="Deactivate"
-                            disabled={!u.isActive}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
+            <>
+              {/* Desktop table — hidden on mobile */}
+              <div className="hidden md:block overflow-x-auto ayk-scrollbar rounded-lg border border-border/40">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="sticky top-0 bg-card z-10">
+                      <TableHead className="min-w-[160px]">Name</TableHead>
+                      <TableHead className="min-w-[200px]">Email</TableHead>
+                      <TableHead className="min-w-[140px]">Role</TableHead>
+                      <TableHead className="min-w-[140px]">Phone</TableHead>
+                      <TableHead className="min-w-[100px]">Status</TableHead>
+                      <TableHead className="min-w-[120px]">Created</TableHead>
+                      <TableHead className="text-right min-w-[120px]">Actions</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </ScrollArea>
+                  </TableHeader>
+                  <TableBody>
+                    {users.map((u) => (
+                      <TableRow key={u.id} className="hover:bg-slate-50">
+                        <TableCell className="font-medium">{u.name}</TableCell>
+                        <TableCell className="text-muted-foreground text-xs">{u.email}</TableCell>
+                        <TableCell>
+                          <Badge className={`border ${ROLE_BADGE[u.role] || 'bg-slate-100 text-slate-700 border-slate-200'}`}>
+                            {ROLES[u.role as RoleKey] || u.role}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-xs">{u.phone || '—'}</TableCell>
+                        <TableCell>
+                          <Badge className={u.isActive ? 'bg-emerald-100 text-emerald-700 border-emerald-200 border' : 'bg-slate-100 text-slate-500 border-slate-200 border'}>
+                            {u.isActive ? 'Active' : 'Inactive'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{formatDate(u.createdAt)}</TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button variant="ghost" size="icon" onClick={() => setEditUser(u)} aria-label="Edit user" title="Edit">
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            {u.isActive ? (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => setDeleteUser(u)}
+                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                aria-label="Deactivate user"
+                                title="Deactivate"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={async () => { try { await apiPut(`/api/users/${u.id}`, { isActive: true }); toast.success(`${u.name} reactivated`); refetch() } catch (e: any) { toast.error(e.message) } }}
+                                className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                                aria-label="Reactivate user"
+                                title="Reactivate"
+                              >
+                                <UserCheck className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobile cards — shown only on mobile, always shows Edit/Delete buttons */}
+              <div className="md:hidden space-y-3">
+                {users.map((u) => (
+                  <div key={u.id} className="rounded-xl border border-border/60 bg-white p-4 shadow-sm">
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="font-semibold text-slate-900 truncate">{u.name}</div>
+                        <div className="text-xs text-slate-500 truncate">{u.email}</div>
+                      </div>
+                      <Badge className={u.isActive ? 'bg-emerald-100 text-emerald-700 border-emerald-200 border shrink-0' : 'bg-slate-100 text-slate-500 border-slate-200 border shrink-0'}>
+                        {u.isActive ? 'Active' : 'Inactive'}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center gap-2 mb-3">
+                      <Badge className={`border ${ROLE_BADGE[u.role] || 'bg-slate-100 text-slate-700 border-slate-200'}`}>
+                        {ROLES[u.role as RoleKey] || u.role}
+                      </Badge>
+                      <span className="text-xs text-slate-500">{u.phone || 'No phone'}</span>
+                    </div>
+                    {/* Edit + Delete/Reactivate buttons — always visible on mobile */}
+                    <div className="flex gap-2 pt-2 border-t border-slate-100">
+                      <Button variant="outline" size="sm" onClick={() => setEditUser(u)} className="flex-1 h-9">
+                        <Pencil className="h-3.5 w-3.5 mr-1" /> Edit
+                      </Button>
+                      {u.isActive ? (
+                        <Button variant="outline" size="sm" onClick={() => setDeleteUser(u)} className="flex-1 h-9 text-red-600 border-red-200 hover:bg-red-50">
+                          <Trash2 className="h-3.5 w-3.5 mr-1" /> Delete
+                        </Button>
+                      ) : (
+                        <Button variant="outline" size="sm" onClick={async () => { try { await apiPut(`/api/users/${u.id}`, { isActive: true }); toast.success(`${u.name} reactivated`); refetch() } catch (e: any) { toast.error(e.message) } }} className="flex-1 h-9 text-emerald-600 border-emerald-200 hover:bg-emerald-50">
+                          <UserCheck className="h-3.5 w-3.5 mr-1" /> Reactivate
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
